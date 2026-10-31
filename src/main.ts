@@ -111,7 +111,12 @@ if (Capacitor.isNativePlatform()) {
   });
 } else if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => undefined);
+    try {
+      // Sandboxed frames may refuse service workers (even reading the property throws).
+      navigator.serviceWorker.register('./sw.js').catch(() => undefined);
+    } catch {
+      /* offline support is optional */
+    }
   });
 }
 
