@@ -368,6 +368,7 @@ button {
 
 .menu-opts {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: center;
   margin-top: clamp(6px, 1.2vh, 12px);

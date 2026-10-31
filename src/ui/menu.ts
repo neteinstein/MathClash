@@ -6,6 +6,7 @@ import { DURATIONS, saveSettings, type Settings } from '../settings';
 import { isSoundEnabled, setSoundEnabled, sfx, unlockAudio } from '../audio';
 import { h, isLandscape, pulse } from './dom';
 import { ICONS } from './icons';
+import { canRequestFullscreen, enterFullscreen, isFullscreen, isIOS } from './fullscreen';
 
 export interface MenuCallbacks {
   onStart(): void;
@@ -69,7 +70,7 @@ export class MenuScreen {
     const center = h('div', { class: 'menu-center' },
       logo,
       h('div', { class: 'tagline', text: 'Acerta nas contas e pinta o tabuleiro!' }),
-      h('div', { class: 'menu-opts' }, this.durationBtn, this.soundBtn, helpBtn),
+      h('div', { class: 'menu-opts' }, this.durationBtn, this.soundBtn, helpBtn, this.makeFullscreenButton()),
     );
     this.el.append(p2.root, center, p1.root);
     this.refreshAll();
@@ -222,6 +223,42 @@ export class MenuScreen {
       return true;
     }
     return false;
+  }
+
+  /** "Ecrã inteiro" button on mobile web; hidden when already full screen or nothing can be done. */
+  private makeFullscreenButton(): HTMLElement | null {
+    if (isFullscreen() || (!canRequestFullscreen() && !isIOS())) return null;
+    const b = h('button', { class: 'chip fs-btn', html: `${ICONS.fullscreen}<span>Ecrã inteiro</span>`, attrs: { 'aria-label': 'Ecrã inteiro' } });
+    const update = () => b.toggleAttribute('hidden', isFullscreen());
+    document.addEventListener('fullscreenchange', update);
+    document.addEventListener('webkitfullscreenchange', update);
+    b.addEventListener('click', async () => {
+      sfx.tap();
+      if (canRequestFullscreen() && (await enterFullscreen())) return;
+      this.showInstallTip();
+    });
+    return b;
+  }
+
+  /** iPhone Safari cannot go full screen: the only way is "Add to Home Screen". */
+  private showInstallTip(): void {
+    const close = h('button', { class: 'btn btn-primary', html: `${ICONS.close}<span>Percebi!</span>` });
+    const tip = h('div', { class: 'help' },
+      h('div', { class: 'help-card' },
+        h('h2', { text: 'Ecrã inteiro no iPhone' }),
+        h('p', { text: 'O Safari do iPhone não deixa as páginas ficarem em ecrã inteiro. Instala o jogo no ecrã principal:' }),
+        h('ol', {},
+          h('li', { html: 'Abre esta página no <b>Safari</b> (se vieste do WhatsApp, usa "Abrir no Safari").' }),
+          h('li', { html: 'Toca em <b>Partilhar</b> (o quadrado com a seta para cima).' }),
+          h('li', { html: 'Escolhe <b>Adicionar ao ecrã principal</b>.' }),
+          h('li', { html: 'Abre o MathClash pelo ícone: fica em ecrã inteiro e funciona sem internet.' }),
+        ),
+        close,
+      ),
+    );
+    close.addEventListener('click', () => tip.remove());
+    tip.addEventListener('click', (e) => { if (e.target === tip) tip.remove(); });
+    this.el.append(tip);
   }
 
   private showHelp(): void {
