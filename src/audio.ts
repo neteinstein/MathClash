@@ -19,7 +19,9 @@ function ac(): AudioContext | null {
     master.gain.value = 0.5;
     master.connect(ctx.destination);
   }
-  if (ctx.state === 'suspended') void ctx.resume();
+  // iOS can leave the context "suspended" or "interrupted" (after a call, the lock screen…).
+  const state = ctx.state as string;
+  if (state === 'suspended' || state === 'interrupted') ctx.resume().catch(() => undefined);
   return ctx;
 }
 

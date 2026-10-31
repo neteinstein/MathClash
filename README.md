@@ -84,4 +84,13 @@ Os ícones e o ecrã de arranque são gerados a partir de `assets/icon-mark.svg`
 
 `npm run build` gera um site estático em `dist/` que funciona em qualquer servidor (caminhos relativos) e offline depois da primeira visita (service worker). No Android, o Chrome permite "Adicionar ao ecrã principal" para jogar como uma app.
 
+### iPhone / iPad
+
+A versão web funciona no Safari do iOS (iOS 14.5 ou mais recente). Para jogar em ecrã inteiro e sem internet: abrir o site no **Safari → Partilhar → Adicionar ao ecrã principal**.
+
+- Não há vibração (o iOS não deixa as páginas web vibrar).
+- Com o iPhone em **modo silencioso** não há som — é o próprio iOS que silencia os jogos web.
+- A web não consegue fixar a rotação do ecrã: se o iPhone rodar ao pousá-lo na mesa, ativem o **bloqueio de rotação** no Centro de Controlo.
+- O zoom com dois dedos está bloqueado no jogo, para que dois toques ao mesmo tempo não sejam confundidos com um "beliscar".
+
 O workflow *Publicar versão web* publica automaticamente no **GitHub Pages** a cada push para `main`. Para isso ficar ativo, é preciso ir uma vez a **Settings → Pages → Source** e escolher **GitHub Actions**.
