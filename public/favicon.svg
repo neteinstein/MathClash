@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#1a1240"/><g transform="translate(256 256) scale(1) translate(-256 -256)">
+<g>
+  <defs>
+    <clipPath id="mc-clip"><rect x="56" y="56" width="400" height="400" rx="96"/></clipPath>
+  </defs>
+  <g clip-path="url(#mc-clip)">
+    <rect x="56" y="56" width="400" height="400" fill="#ef4444"/>
+    <path d="M56 56 H456 V110 C420 150 400 168 352 196 C300 226 300 270 252 300 C204 330 196 372 150 410 C120 434 90 446 56 456 Z" fill="#3b82f6"/>
+    <path d="M456 110 C420 150 400 168 352 196 C300 226 300 270 252 300 C204 330 196 372 150 410 C120 434 90 446 56 456" fill="none" stroke="#fff" stroke-opacity=".9" stroke-width="14" stroke-linecap="round"/>
+  </g>
+  <g fill="#fff">
+    <rect x="128" y="168" width="128" height="36" rx="18"/>
+    <rect x="174" y="122" width="36" height="128" rx="18"/>
+    <g transform="rotate(45 338 346)">
+      <rect x="274" y="328" width="128" height="36" rx="18"/>
+      <rect x="320" y="282" width="36" height="128" rx="18"/>
+    </g>
+  </g>
+</g>
+</g></svg>
