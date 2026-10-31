@@ -3,17 +3,17 @@
  * board so the game feels the same on a small phone and a big tablet.
  */
 
-import { MAX_LEVEL } from './questions';
+import { stageCount } from './questions';
 
-/** Correct answers needed to go up one difficulty level. */
-export const CORRECT_PER_LEVEL = 4;
+/** Correct answers needed to go up one stage (bigger numbers, same operations). */
+export const CORRECT_PER_STAGE = 4;
 /** Answering faster than this (ms) gives a speed bonus. */
 export const FAST_MS = 2500;
 /** Input lock after a wrong answer (ms), so mashing buttons does not pay off. */
 export const WRONG_LOCK_MS = 1100;
 
-export function levelFor(startLevel: number, correct: number): number {
-  return Math.min(MAX_LEVEL, startLevel + Math.floor(correct / CORRECT_PER_LEVEL));
+export function stageFor(difficulty: number, correct: number): number {
+  return Math.min(stageCount(difficulty), 1 + Math.floor(correct / CORRECT_PER_STAGE));
 }
 
 export interface RewardInput {

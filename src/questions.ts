@@ -10,21 +10,25 @@ export interface Question {
   answer: number;
   /** Exactly 4 distinct options, one of them is `answer`. */
   options: number[];
-  level: number;
+  /** Difficulty chosen in the menu (index into DIFFICULTIES). */
+  difficulty: number;
+  /** Stage inside that difficulty: numbers get bigger as it goes up. */
+  stage: number;
   /** Golden questions are worth double territory. */
   golden: boolean;
 }
 
-export const MIN_LEVEL = 1;
-export const MAX_LEVEL = 10;
-
-/** Starting level for each difficulty the players can pick in the menu. */
+/**
+ * Difficulties the players pick in the menu. Each one fixes WHICH operations
+ * can show up; playing well only makes the numbers bigger, it never brings
+ * in an operation the player did not sign up for.
+ */
 export const DIFFICULTIES = [
-  { label: 'Pequeno', emoji: '🐣', level: 1 },
-  { label: 'Fácil', emoji: '🙂', level: 2 },
-  { label: 'Médio', emoji: '😎', level: 4 },
-  { label: 'Difícil', emoji: '🔥', level: 6 },
-  { label: 'Génio', emoji: '🧠', level: 8 },
+  { label: 'Pequeno', emoji: '🐣', ops: '+ −' },
+  { label: 'Fácil', emoji: '🙂', ops: '+ − ×' },
+  { label: 'Médio', emoji: '😎', ops: '+ − × ÷' },
+  { label: 'Difícil', emoji: '🔥', ops: 'tudo' },
+  { label: 'Génio', emoji: '🧠', ops: 'tudo' },
 ] as const;
 
 interface Raw {
@@ -211,25 +215,63 @@ function gcd(a: number, b: number): number {
   return b === 0 ? a : gcd(b, a % b);
 }
 
-// ------------------------------------------------------------------- levels
+// ------------------------------------------------------------------- stages
 
 type Weighted = [Gen, number];
+type Stage = Weighted[];
 
-const LEVELS: Record<number, Weighted[]> = {
-  1: [[add(1, 5), 1]],
-  2: [[add(2, 10), 3], [sub(1, 10), 2]],
-  3: [[add(5, 30), 3], [sub(5, 20), 3], [mul(2, 2, 1, 10), 1], [mul(5, 5, 1, 10), 1], [mul(10, 10, 1, 10), 1]],
-  4: [[add(10, 60), 2], [sub(10, 60), 2], [mul(2, 10), 4], [missingAdd(2, 15), 1]],
-  5: [[mul(2, 10), 3], [div(2, 10, 2, 10), 3], [add(20, 99), 2], [sub(20, 99), 2], [missingAdd(5, 30), 1]],
-  6: [[mul(3, 12), 3], [div(2, 12, 2, 12), 2], [missingMul(2, 10), 2], [threeTerms(5, 30), 2], [addThenMul, 2]],
-  7: [[mul(11, 19, 2, 9), 2], [square(2, 12), 2], [addThenMul, 2], [mulThenSub, 2], [missingMul(3, 12), 2], [sub(50, 300), 1]],
-  8: [[percent([10, 20, 25, 50]), 2], [sub(10, 60, true), 2], [negAdd, 2], [parenMul, 2], [div(3, 15, 3, 12), 2], [square(5, 15), 1]],
-  9: [[twoByTwo, 2], [sqrt(3, 20), 2], [parenMul, 2], [div(6, 25, 3, 9), 2], [negMul, 2], [percent([10, 15, 25, 75]), 1]],
-  10: [[mulDiff, 2], [power, 2], [twoByTwo, 2], [negMul, 2], [percent([5, 15, 30, 75]), 2], [sqrt(10, 25), 1]],
-};
+/** "Everything" ladder: mixed operations, order of operations, powers, percentages, negatives… */
+const ALL: Stage[] = [
+  [[mul(3, 12), 3], [div(2, 12, 2, 12), 2], [missingAdd(5, 30), 2], [missingMul(2, 10), 2], [threeTerms(5, 30), 2], [addThenMul, 2], [add(20, 99), 1], [sub(20, 99), 1]],
+  [[mul(11, 19, 2, 9), 2], [square(2, 12), 2], [addThenMul, 2], [mulThenSub, 2], [missingMul(3, 12), 2], [sub(50, 300), 1]],
+  [[percent([10, 20, 25, 50]), 2], [sub(10, 60, true), 2], [negAdd, 2], [parenMul, 2], [div(3, 15, 3, 12), 2], [square(5, 15), 1]],
+  [[twoByTwo, 2], [sqrt(3, 20), 2], [parenMul, 2], [div(6, 25, 3, 9), 2], [negMul, 2], [percent([10, 15, 25, 75]), 1]],
+  [[mulDiff, 2], [power, 2], [twoByTwo, 2], [negMul, 2], [percent([5, 15, 30, 75]), 2], [sqrt(10, 25), 1]],
+];
 
-function pickGen(rng: Rng, level: number): Gen {
-  const pool = LEVELS[Math.min(MAX_LEVEL, Math.max(MIN_LEVEL, level))];
+/** One ladder per difficulty; a player climbs one stage every few correct answers. */
+const LADDERS: Stage[][] = [
+  // 🐣 Pequeno: only + and −
+  [
+    [[add(1, 5), 1], [sub(1, 9), 1]],
+    [[add(2, 10), 1], [sub(2, 15), 1]],
+    [[add(5, 20), 1], [sub(5, 20), 1]],
+    [[add(10, 40), 1], [sub(10, 50), 1]],
+    [[add(20, 99), 1], [sub(20, 99), 1]],
+    [[add(50, 250), 1], [sub(50, 300), 1]],
+  ],
+  // 🙂 Fácil: + − ×
+  [
+    [[add(2, 10), 2], [sub(2, 12), 2], [mul(2, 2, 1, 10), 1], [mul(10, 10, 1, 10), 1]],
+    [[add(5, 20), 2], [sub(5, 20), 2], [mul(2, 5, 1, 10), 2]],
+    [[add(10, 50), 2], [sub(10, 50), 2], [mul(2, 10), 3]],
+    [[add(20, 99), 2], [sub(20, 99), 2], [mul(2, 10), 3]],
+    [[add(50, 200), 1], [sub(50, 200), 1], [mul(3, 12), 3]],
+    [[add(100, 500), 1], [sub(100, 500), 1], [mul(3, 12), 2], [mul(11, 19, 2, 9), 2]],
+  ],
+  // 😎 Médio: + − × ÷
+  [
+    [[add(5, 30), 1], [sub(5, 30), 1], [mul(2, 10), 2], [div(2, 10, 2, 5), 2]],
+    [[add(10, 60), 1], [sub(10, 60), 1], [mul(2, 10), 2], [div(2, 10, 2, 10), 2]],
+    [[add(20, 99), 1], [sub(20, 99), 1], [mul(3, 12), 2], [div(2, 12, 2, 12), 2]],
+    [[add(50, 200), 1], [sub(50, 300), 1], [mul(11, 19, 2, 9), 2], [div(3, 15, 3, 12), 2]],
+    [[add(100, 500), 1], [sub(100, 500), 1], [twoByTwo, 2], [div(6, 25, 3, 9), 2]],
+  ],
+  // 🔥 Difícil: everything
+  ALL,
+  // 🧠 Génio: everything, starting further up
+  ALL.slice(2),
+];
+
+const clampDifficulty = (d: number) => Math.min(LADDERS.length - 1, Math.max(0, Math.round(d)));
+
+/** Number of stages a difficulty has (the last one repeats forever). */
+export function stageCount(difficulty: number): number {
+  return LADDERS[clampDifficulty(difficulty)].length;
+}
+
+function pickGen(rng: Rng, difficulty: number, stage: number): Gen {
+  const pool = LADDERS[difficulty][stage - 1];
   const total = pool.reduce((s, [, w]) => s + w, 0);
   let r = rng() * total;
   for (const [gen, w] of pool) {
@@ -269,18 +311,20 @@ export interface GenerateOpts {
   goldenChance?: number;
 }
 
-export function generateQuestion(level: number, opts: GenerateOpts = {}): Question {
+export function generateQuestion(difficulty: number, stage: number, opts: GenerateOpts = {}): Question {
   const rng = opts.rng ?? Math.random;
-  const lvl = Math.min(MAX_LEVEL, Math.max(MIN_LEVEL, Math.round(level)));
-  let raw = pickGen(rng, lvl)(rng);
+  const d = clampDifficulty(difficulty);
+  const st = Math.min(stageCount(d), Math.max(1, Math.round(stage)));
+  let raw = pickGen(rng, d, st)(rng);
   for (let tries = 0; tries < 12 && opts.avoid?.includes(raw.text); tries++) {
-    raw = pickGen(rng, lvl)(rng);
+    raw = pickGen(rng, d, st)(rng);
   }
   return {
     text: raw.text,
     answer: raw.answer,
     options: makeOptions(rng, raw.answer, raw.traps, raw.negatives),
-    level: lvl,
+    difficulty: d,
+    stage: st,
     golden: rng() < (opts.goldenChance ?? 0.1),
   };
 }

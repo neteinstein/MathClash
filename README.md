@@ -8,7 +8,16 @@ Corre na **web** (também instalável como app e funciona offline) e em **Androi
 
 ## Como se joga
 
-1. No menu, cada jogador escolhe o **avatar** (toca nele para mudar), a **cor** e o **nível** — dá para jogar miúdos contra graúdos: 🐣 Pequeno, 🙂 Fácil, 😎 Médio, 🔥 Difícil, 🧠 Génio.
+1. No menu, cada jogador escolhe o **avatar** (toca nele para mudar), a **cor** e o **nível** — dá para jogar miúdos contra graúdos. O nível decide que contas aparecem:
+
+   | Nível | Contas |
+   |---|---|
+   | 🐣 Pequeno | só somar e subtrair |
+   | 🙂 Fácil | somar, subtrair e multiplicar |
+   | 😎 Médio | as 4 operações |
+   | 🔥 Difícil | tudo: contas mistas, número em falta, quadrados, raízes, percentagens, negativos… |
+   | 🧠 Génio | tudo, a começar já com números grandes |
+
 2. Escolham a duração (1, 2, 3 min ou sem limite) e carreguem os dois em **PRONTO!**
 3. Depois do 3, 2, 1… respondam o mais depressa possível. Cada jogador tem as suas próprias contas, viradas para si.
 
@@ -19,7 +28,7 @@ Corre na **web** (também instalável como app e funciona offline) e em **Androi
 | 🔥 Série de acertos | 3, 5 e 8 seguidas dão cada vez mais casas |
 | ⚡ Resposta rápida | Menos de 2,5 s dá bónus |
 | ⭐ Conta dourada | Vale o dobro |
-| 📈 Dificuldade | Sobe a cada 4 acertos; com o passar do tempo cada acerto vale mais |
+| 📈 Dificuldade | A cada 4 acertos os números ficam maiores (as operações não mudam); com o passar do tempo cada acerto vale mais |
 | 🏠 Casa do avatar | Só pode ser roubada quando é a última — é o golpe final! |
 
 Com teclado (versão web em computador): Jogador 1 usa `1 2 3 4` ou `A S D F`, Jogador 2 usa `7 8 9 0` ou `H J K L`. `Esc` ou `P` pausa.
@@ -41,7 +50,7 @@ Truque para testar: abre `?bots=1,2` no URL e o computador joga sozinho dos dois
 
 ```
 src/
-  questions.ts   gerador de contas (10 níveis) e respostas erradas plausíveis
+  questions.ts   gerador de contas (operações por nível, números a crescer por etapa) e respostas erradas plausíveis
   board.ts       lógica do tabuleiro: expandir, encolher, roubar, inundação final
   rules.ts       equilíbrio do jogo: recompensas, penalizações, subida de nível
   renderer.ts    desenho do tabuleiro em canvas, com animação de "tinta a espalhar"

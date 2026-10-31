@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DIFFICULTIES, MAX_LEVEL, MIN_LEVEL, generateQuestion, makeOptions } from '../src/questions';
+import { DIFFICULTIES, generateQuestion, makeOptions, stageCount } from '../src/questions';
 
 /** Small deterministic PRNG so failures are reproducible. */
 function mulberry32(seed: number) {
@@ -33,32 +33,72 @@ function evaluate(text: string): number {
   return Function(`return ${expr}`)();
 }
 
-describe('generateQuestion', () => {
-  for (let level = MIN_LEVEL; level <= MAX_LEVEL; level++) {
-    it(`level ${level}: answers are correct and options are valid`, () => {
-      const rng = mulberry32(level * 1000 + 7);
-      for (let k = 0; k < 400; k++) {
-        const q = generateQuestion(level, { rng });
-        expect(q.level).toBe(level);
-        expect(Number.isInteger(q.answer)).toBe(true);
-        expect(evaluate(q.text)).toBe(q.answer);
-        expect(q.options).toHaveLength(4);
-        expect(new Set(q.options).size).toBe(4);
-        expect(q.options).toContain(q.answer);
-        for (const o of q.options) expect(Number.isInteger(o)).toBe(true);
-        // Negative numbers only show up from level 8 on.
-        if (level < 8) for (const o of q.options) expect(o).toBeGreaterThanOrEqual(0);
-      }
-    });
-  }
+/** Operators each difficulty may use (anything else in the text is a failure). */
+const ALLOWED: Record<number, RegExp | null> = {
+  0: /^\d+ [+−] \d+$/, // 🐣 only + and −
+  1: /^\d+ [+−×] \d+$/, // 🙂 + − ×
+  2: /^\d+ [+−×÷] \d+$/, // 😎 + − × ÷
+  3: null, // 🔥 everything
+  4: null, // 🧠 everything
+};
 
-  it('easy levels stay small for young players', () => {
+describe('generateQuestion', () => {
+  DIFFICULTIES.forEach((d, difficulty) => {
+    for (let stage = 1; stage <= stageCount(difficulty); stage++) {
+      it(`${d.label} stage ${stage}: right answers, valid options, allowed operations only`, () => {
+        const rng = mulberry32(difficulty * 1000 + stage * 37);
+        for (let k = 0; k < 300; k++) {
+          const q = generateQuestion(difficulty, stage, { rng });
+          expect(q.difficulty).toBe(difficulty);
+          expect(q.stage).toBe(stage);
+          expect(Number.isInteger(q.answer)).toBe(true);
+          expect(evaluate(q.text)).toBe(q.answer);
+          expect(q.options).toHaveLength(4);
+          expect(new Set(q.options).size).toBe(4);
+          expect(q.options).toContain(q.answer);
+          for (const o of q.options) expect(Number.isInteger(o)).toBe(true);
+          const allowed = ALLOWED[difficulty];
+          if (allowed) {
+            expect(q.text).toMatch(allowed);
+            // No negative numbers for the basic levels.
+            for (const o of q.options) expect(o).toBeGreaterThanOrEqual(0);
+          }
+        }
+      });
+    }
+  });
+
+  it('each basic level really uses every operation it promises', () => {
+    const rng = mulberry32(5);
+    const seen = (difficulty: number) => {
+      const ops = new Set<string>();
+      for (let stage = 1; stage <= stageCount(difficulty); stage++) {
+        for (let k = 0; k < 200; k++) ops.add(generateQuestion(difficulty, stage, { rng }).text.split(' ')[1]);
+      }
+      return [...ops].sort().join('');
+    };
+    expect(seen(0)).toBe(['+', '−'].sort().join(''));
+    expect(seen(1)).toBe(['+', '−', '×'].sort().join(''));
+    expect(seen(2)).toBe(['+', '−', '×', '÷'].sort().join(''));
+  });
+
+  it('the very first stage stays small for young players', () => {
     const rng = mulberry32(42);
     for (let k = 0; k < 300; k++) {
-      const q = generateQuestion(1, { rng });
+      const q = generateQuestion(0, 1, { rng });
       expect(q.answer).toBeLessThanOrEqual(10);
-      expect(q.text).toMatch(/^\d \+ \d$/);
+      expect(q.text).toMatch(/^\d{1,2} [+−] \d$/);
     }
+  });
+
+  it('numbers grow from one stage to the next', () => {
+    const rng = mulberry32(11);
+    const avg = (stage: number) => {
+      let sum = 0;
+      for (let k = 0; k < 300; k++) sum += Math.abs(generateQuestion(0, stage, { rng }).answer);
+      return sum / 300;
+    };
+    expect(avg(stageCount(0))).toBeGreaterThan(avg(1) * 5);
   });
 
   it('avoids recently asked questions when possible', () => {
@@ -66,7 +106,7 @@ describe('generateQuestion', () => {
     const recent: string[] = [];
     let repeats = 0;
     for (let k = 0; k < 200; k++) {
-      const q = generateQuestion(4, { rng, avoid: recent });
+      const q = generateQuestion(1, 3, { rng, avoid: recent });
       if (recent.includes(q.text)) repeats++;
       recent.push(q.text);
       if (recent.length > 5) recent.shift();
@@ -76,21 +116,17 @@ describe('generateQuestion', () => {
 
   it('golden questions appear sometimes', () => {
     const rng = mulberry32(9);
-    const golden = Array.from({ length: 1000 }, () => generateQuestion(3, { rng }).golden).filter(Boolean).length;
+    const golden = Array.from({ length: 1000 }, () => generateQuestion(2, 2, { rng }).golden).filter(Boolean).length;
     expect(golden).toBeGreaterThan(50);
     expect(golden).toBeLessThan(160);
   });
 
-  it('clamps out-of-range levels', () => {
-    expect(generateQuestion(0).level).toBe(MIN_LEVEL);
-    expect(generateQuestion(99).level).toBe(MAX_LEVEL);
-  });
-
-  it('difficulty presets map to valid levels', () => {
-    for (const d of DIFFICULTIES) {
-      expect(d.level).toBeGreaterThanOrEqual(MIN_LEVEL);
-      expect(d.level).toBeLessThanOrEqual(MAX_LEVEL);
-    }
+  it('clamps out-of-range difficulty and stage', () => {
+    const q = generateQuestion(-3, 0);
+    expect([q.difficulty, q.stage]).toEqual([0, 1]);
+    const top = generateQuestion(99, 99);
+    expect(top.difficulty).toBe(DIFFICULTIES.length - 1);
+    expect(top.stage).toBe(stageCount(DIFFICULTIES.length - 1));
   });
 });
 

@@ -4,7 +4,7 @@ import type { Fx } from '../fx';
 import { Avatar } from '../avatar';
 import { COLORS, applyColorVars, type PlayerColor } from '../colors';
 import { DIFFICULTIES, formatNumber, generateQuestion, type Question } from '../questions';
-import { COMBO_LABELS, WRONG_LOCK_MS, levelFor, penalty, reward } from '../rules';
+import { COMBO_LABELS, WRONG_LOCK_MS, penalty, reward, stageFor } from '../rules';
 import { sfx, vibrate } from '../audio';
 import type { Settings } from '../settings';
 import { h, hasKeyboard, isLandscape, onPress, pulse } from './dom';
@@ -20,7 +20,7 @@ const KEYS: Record<PlayerId, string[][]> = {
 interface PlayerRt {
   id: PlayerId;
   color: PlayerColor;
-  startLevel: number;
+  difficulty: number;
   avatar: Avatar;
   avatarWrap: HTMLDivElement;
   panel: HTMLElement;
@@ -140,7 +140,7 @@ export class GameScreen {
     applyColorVars(avatarWrap, color);
 
     return {
-      id, color, startLevel: DIFFICULTIES[setup.difficulty].level, avatar, avatarWrap, panel, qcard, qtext,
+      id, color, difficulty: setup.difficulty, avatar, avatarWrap, panel, qcard, qtext,
       streakBadge, levelBadge, buttons, floats, timeEl, myPct, theirPct, myBar, theirBar, countdown,
       question: null, shownAt: 0, busy: true, timer: 0, correct: 0, wrong: 0, streak: 0, bestStreak: 0,
       fastest: Infinity, recent: [], shownPct: 0,
@@ -223,8 +223,8 @@ export class GameScreen {
   }
 
   private nextQuestion(p: PlayerRt): void {
-    const level = levelFor(p.startLevel, p.correct);
-    const q = generateQuestion(level, { avoid: p.recent });
+    const stage = stageFor(p.difficulty, p.correct);
+    const q = generateQuestion(p.difficulty, stage, { avoid: p.recent });
     p.recent = [...p.recent.slice(-5), q.text];
     p.question = q;
     p.shownAt = this.elapsed;
@@ -232,7 +232,7 @@ export class GameScreen {
     p.qtext.textContent = q.text;
     p.qcard.classList.toggle('golden', q.golden);
     p.qcard.classList.toggle('long', q.text.length > 9);
-    p.levelBadge.textContent = `Nv ${q.level}`;
+    p.levelBadge.textContent = `${DIFFICULTIES[q.difficulty].emoji} Nv ${q.stage}`;
     pulse(p.qcard, 'enter', 400);
     if (q.golden) sfx.golden();
     p.buttons.forEach((b, i) => {
@@ -556,8 +556,8 @@ export class GameScreen {
   private scheduleBot(p: PlayerRt): void {
     if (!this.opts.bots?.includes(p.id)) return;
     window.clearTimeout(this.botTimers[p.id]);
-    const level = p.question?.level ?? 1;
-    const delay = 900 + Math.random() * (1200 + level * 250);
+    const effort = (p.question?.difficulty ?? 0) * 2 + (p.question?.stage ?? 1);
+    const delay = 900 + Math.random() * (1200 + effort * 250);
     this.botTimers[p.id] = window.setTimeout(() => {
       const q = p.question;
       if (!q || this.state !== 'playing') return;

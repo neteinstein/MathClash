@@ -131,7 +131,11 @@ export class MenuScreen {
     });
 
     const diffs = DIFFICULTIES.map((d, i) => {
-      const b = h('button', { class: 'diff' }, h('span', { class: 'diff-emoji', text: d.emoji }), h('span', { class: 'diff-label', text: d.label }));
+      const b = h('button', { class: 'diff', attrs: { 'aria-label': `${d.label}: ${d.ops}` } },
+        h('span', { class: 'diff-emoji', text: d.emoji }),
+        h('span', { class: 'diff-label', text: d.label }),
+        h('span', { class: 'diff-ops', text: d.ops }),
+      );
       b.addEventListener('click', () => {
         setup.difficulty = i;
         sfx.tap();
@@ -232,7 +236,8 @@ export class MenuScreen {
           h('li', { html: 'Acertaste? A tua cor <b>expande</b> e pode roubar casas ao adversário!' }),
           h('li', { html: 'Erraste? A tua cor <b>encolhe</b> um bocadinho e ficas bloqueado por um instante.' }),
           h('li', { html: 'Séries de acertos (🔥), respostas rápidas (⚡) e contas douradas (⭐) dão mais casas.' }),
-          h('li', { html: 'As contas ficam <b>cada vez mais difíceis</b>. Ganha quem pintar o tabuleiro todo — ou quem tiver mais quando o tempo acabar.' }),
+          h('li', { html: 'O nível escolhe as contas: 🐣 <b>+ −</b>, 🙂 <b>+ − ×</b>, 😎 <b>+ − × ÷</b>, 🔥 e 🧠 <b>tudo</b>. A cada 4 acertos os números ficam maiores.' }),
+          h('li', { html: 'Ganha quem pintar o tabuleiro todo — ou quem tiver mais quando o tempo acabar.' }),
         ),
         h('p', { class: 'help-tip', text: 'Dica: escolham níveis diferentes para jogar miúdos contra graúdos!' }),
         close,

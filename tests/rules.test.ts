@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { comboTier, levelFor, penalty, reward } from '../src/rules';
-import { MAX_LEVEL } from '../src/questions';
+import { comboTier, penalty, reward, stageFor } from '../src/rules';
+import { stageCount } from '../src/questions';
 
 describe('rules', () => {
-  it('levels go up with correct answers and cap at the max', () => {
-    expect(levelFor(1, 0)).toBe(1);
-    expect(levelFor(1, 4)).toBe(2);
-    expect(levelFor(8, 100)).toBe(MAX_LEVEL);
+  it('stages go up every 4 correct answers and stop at the last one', () => {
+    expect(stageFor(0, 0)).toBe(1);
+    expect(stageFor(0, 3)).toBe(1);
+    expect(stageFor(0, 4)).toBe(2);
+    expect(stageFor(0, 1000)).toBe(stageCount(0));
   });
 
   it('rewards scale with board size, streak, speed and golden questions', () => {
