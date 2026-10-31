@@ -145,3 +145,25 @@ export class Avatar {
     this.el.classList.add(`mood-${m}`);
   }
 }
+
+/** The little devil sent after 10 correct answers in a row. */
+export function devilSVG(): string {
+  return `
+<svg class="devil-svg" viewBox="0 0 100 100" aria-hidden="true">
+  <path d="M72 78 Q96 84 90 60 Q88 50 95 44" fill="none" stroke="#7f1d1d" stroke-width="5" stroke-linecap="round"/>
+  <path d="M95 36 L101 48 L89 46 Z" fill="#7f1d1d"/>
+  <path d="M27 40 Q16 18 26 6 Q30 24 41 32 Z" fill="#7f1d1d"/>
+  <path d="M73 40 Q84 18 74 6 Q70 24 59 32 Z" fill="#7f1d1d"/>
+  <ellipse cx="50" cy="60" rx="32" ry="30" fill="#dc2626"/>
+  <path d="M20 66 C24 84 38 90 50 90 C62 90 76 84 80 66 C74 80 62 85 50 85 C38 85 26 80 20 66 Z" fill="#991b1b"/>
+  <ellipse cx="38" cy="42" rx="9" ry="5" fill="#fff" opacity=".3" transform="rotate(-25 38 42)"/>
+  <path d="M31 44 L46 51" stroke="#1f0a14" stroke-width="4.5" stroke-linecap="round"/>
+  <path d="M69 44 L54 51" stroke="#1f0a14" stroke-width="4.5" stroke-linecap="round"/>
+  <ellipse cx="40" cy="57" rx="6.5" ry="6" fill="#fde047"/>
+  <ellipse cx="60" cy="57" rx="6.5" ry="6" fill="#fde047"/>
+  <ellipse cx="42" cy="58" rx="2" ry="4.5" fill="#1f0a14"/>
+  <ellipse cx="62" cy="58" rx="2" ry="4.5" fill="#1f0a14"/>
+  <path d="M32 67 Q50 86 68 67 Q50 75 32 67 Z" fill="#1f0a14"/>
+  <path d="M41 70 L44 76 L46 71 Z M59 70 L56 76 L54 71 Z" fill="#fff"/>
+</svg>`;
+}

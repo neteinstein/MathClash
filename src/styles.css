@@ -937,6 +937,133 @@ button {
   }
 }
 
+/* ---- the little devil (10 correct in a row) */
+
+.float.combo.devil {
+  background: linear-gradient(#9333ea, #be123c);
+}
+
+.float.combo.angel {
+  background: linear-gradient(#fde047, #f59e0b);
+  color: #fff;
+}
+
+.devil-sprite {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  pointer-events: none;
+  filter: drop-shadow(0 5px 6px rgba(0, 0, 0, 0.45));
+}
+
+.devil-body,
+.devil-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.devil-sprite.flying {
+  filter: drop-shadow(0 0 10px rgba(217, 70, 239, 0.9)) drop-shadow(0 6px 8px rgba(0, 0, 0, 0.4));
+}
+
+.devil-sprite.sitting .devil-body {
+  animation: devil-bob 0.9s ease-in-out infinite;
+}
+
+.devil-sprite.cackle .devil-body {
+  animation: devil-cackle 0.18s linear 5;
+}
+
+.devil-sprite.poof .devil-body {
+  animation: devil-poof 0.6s ease-in forwards;
+}
+
+.devil-sprite.leave .devil-body {
+  animation: devil-leave 0.7s ease-in forwards;
+}
+
+@keyframes devil-bob {
+  50% {
+    transform: translateY(-10%) rotate(-6deg);
+  }
+}
+
+@keyframes devil-cackle {
+  25% {
+    transform: rotate(-12deg) scale(1.15);
+  }
+  75% {
+    transform: rotate(12deg) scale(1.15);
+  }
+}
+
+@keyframes devil-poof {
+  30% {
+    transform: scale(1.35) rotate(20deg);
+  }
+  to {
+    transform: scale(0) rotate(-360deg);
+    opacity: 0;
+  }
+}
+
+@keyframes devil-leave {
+  to {
+    transform: translateY(-140%) scale(0.4) rotate(25deg);
+    opacity: 0;
+  }
+}
+
+/* The devil's question card: dark, glowing, with horns. */
+.qcard.devil {
+  background: linear-gradient(180deg, #581c87, #9f1239);
+  color: #fff;
+  box-shadow: 0 5px 0 #3b0764, 0 0 0 3px #f43f5e, 0 0 24px rgba(244, 63, 94, 0.7);
+  animation: devil-glow 0.8s ease-in-out infinite alternate;
+}
+
+.qcard.devil::before,
+.qcard.devil::after {
+  content: '';
+  position: absolute;
+  top: -15px;
+  width: 20px;
+  height: 22px;
+  background: linear-gradient(#fb7185, #be123c);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
+.qcard.devil::before {
+  left: 26%;
+  transform: rotate(-16deg);
+}
+
+.qcard.devil::after {
+  right: 26%;
+  transform: rotate(16deg);
+}
+
+@keyframes devil-glow {
+  to {
+    box-shadow: 0 5px 0 #3b0764, 0 0 0 3px #fb7185, 0 0 40px rgba(251, 113, 133, 1);
+  }
+}
+
+.badge.devilb {
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e0a2e;
+  color: #fda4af;
+  white-space: nowrap;
+  display: none;
+}
+
+.qcard.devil .badge.devilb {
+  display: block;
+}
+
 /* ---- countdown */
 
 .countdown {

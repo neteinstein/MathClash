@@ -28,6 +28,7 @@ Corre na **web** (também instalável como app e funciona offline) e em **Androi
 | 🔥 Série de acertos | 3, 5 e 8 seguidas dão cada vez mais casas |
 | ⚡ Resposta rápida | Menos de 2,5 s dá bónus |
 | ⭐ Conta dourada | Vale o dobro |
+| 😈 Diabinho | 10 acertos seguidos enviam um diabinho que atravessa o tabuleiro: o adversário recebe uma conta bem mais difícil (mesmas operações do nível dele, números maiores). Se a acertar, vale a dobrar |
 | 📈 Dificuldade | A cada 4 acertos os números ficam maiores (as operações não mudam); com o passar do tempo cada acerto vale mais |
 | 🏠 Casa do avatar | Só pode ser roubada quando é a última — é o golpe final! |
 

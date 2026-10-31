@@ -236,6 +236,7 @@ export class MenuScreen {
           h('li', { html: 'Acertaste? A tua cor <b>expande</b> e pode roubar casas ao adversário!' }),
           h('li', { html: 'Erraste? A tua cor <b>encolhe</b> um bocadinho e ficas bloqueado por um instante.' }),
           h('li', { html: 'Séries de acertos (🔥), respostas rápidas (⚡) e contas douradas (⭐) dão mais casas.' }),
+          h('li', { html: '<b>10 acertos seguidos</b> enviam um 😈 diabinho: o adversário recebe uma conta bem mais difícil. Quem a acertar ganha a dobrar!' }),
           h('li', { html: 'O nível escolhe as contas: 🐣 <b>+ −</b>, 🙂 <b>+ − ×</b>, 😎 <b>+ − × ÷</b>, 🔥 e 🧠 <b>tudo</b>. A cada 4 acertos os números ficam maiores.' }),
           h('li', { html: 'Ganha quem pintar o tabuleiro todo — ou quem tiver mais quando o tempo acabar.' }),
         ),

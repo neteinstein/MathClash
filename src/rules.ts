@@ -16,6 +16,18 @@ export function stageFor(difficulty: number, correct: number): number {
   return Math.min(stageCount(difficulty), 1 + Math.floor(correct / CORRECT_PER_STAGE));
 }
 
+/** Every this many correct answers in a row sends a 😈 to the opponent. */
+export const DEVIL_STREAK = 10;
+/** How many stages above the victim's current one the devil's question is. */
+export const DEVIL_STAGE_JUMP = 3;
+
+export const isDevilStreak = (streak: number): boolean => streak > 0 && streak % DEVIL_STREAK === 0;
+
+/** The devil's question: same operations as the victim's level, much bigger numbers. */
+export function devilStage(difficulty: number, stage: number): number {
+  return Math.min(stageCount(difficulty), stage + DEVIL_STAGE_JUMP);
+}
+
 export interface RewardInput {
   boardSize: number;
   elapsedMs: number;
@@ -23,6 +35,8 @@ export interface RewardInput {
   streak: number;
   answerMs: number;
   golden: boolean;
+  /** Beating the devil's question is worth double too. */
+  devil?: boolean;
 }
 
 export interface Reward {
@@ -38,13 +52,13 @@ export function comboTier(streak: number): number {
   return 0;
 }
 
-export function reward({ boardSize, elapsedMs, streak, answerMs, golden }: RewardInput): Reward {
+export function reward({ boardSize, elapsedMs, streak, answerMs, golden, devil = false }: RewardInput): Reward {
   const pct = boardSize / 100;
   const ramp = Math.min(5, Math.floor(elapsedMs / 20000)); // game speeds up over time
   const combo = comboTier(streak);
   const fast = answerMs < FAST_MS;
   let percent = 3.5 + ramp + combo * 1.5 + (fast ? 1 : 0);
-  if (golden) percent *= 2;
+  if (golden || devil) percent *= 2;
   return { cells: Math.max(1, Math.round(percent * pct)), fast, combo };
 }
 

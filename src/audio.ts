@@ -107,6 +107,17 @@ export const sfx = {
     const seq = [0, 4, 7, 12, 7, 12, 16];
     seq.forEach((s, i) => tone({ type: 'triangle', freq: NOTE(3 + s), dur: i === seq.length - 1 ? 0.6 : 0.16, vol: 0.25, delay: i * 0.12 }));
   },
+  /** Little devil cackle: "mwa-ha-ha". */
+  devil() {
+    [0, 0.14, 0.28].forEach((d, i) => {
+      tone({ type: 'sawtooth', freq: 340 - i * 45, to: 250 - i * 40, dur: 0.12, vol: 0.13, delay: d });
+      tone({ type: 'square', freq: 170 - i * 22, dur: 0.1, vol: 0.05, delay: d });
+    });
+  },
+  devilDefeated() {
+    tone({ type: 'sine', freq: 300, to: 1300, dur: 0.25, vol: 0.16 });
+    [0, 4, 7, 12].forEach((s, i) => tone({ type: 'triangle', freq: NOTE(10 + s), dur: 0.12, vol: 0.16, delay: 0.12 + i * 0.06 }));
+  },
   draw() {
     [0, 3, 0].forEach((s, i) => tone({ type: 'triangle', freq: NOTE(3 + s), dur: 0.25, vol: 0.2, delay: i * 0.2 }));
   },

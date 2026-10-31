@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { comboTier, penalty, reward, stageFor } from '../src/rules';
+import { DEVIL_STREAK, comboTier, devilStage, isDevilStreak, penalty, reward, stageFor } from '../src/rules';
 import { stageCount } from '../src/questions';
 
 describe('rules', () => {
@@ -19,6 +19,22 @@ describe('rules', () => {
     expect(reward({ ...base, answerMs: 1000 }).fast).toBe(true);
     expect(reward({ ...base, golden: true }).cells).toBeGreaterThanOrEqual(r0 * 2 - 1);
     expect(reward({ ...base, elapsedMs: 60000 }).cells).toBeGreaterThan(r0);
+  });
+
+  it('a devil is sent every 10 correct answers in a row', () => {
+    expect(DEVIL_STREAK).toBe(10);
+    expect([0, 1, 9, 10, 11, 19, 20, 30].map(isDevilStreak)).toEqual([false, false, false, true, false, false, true, true]);
+  });
+
+  it("the devil's question is harder but never past the victim's last stage", () => {
+    expect(devilStage(0, 1)).toBeGreaterThan(1);
+    expect(devilStage(0, stageCount(0))).toBe(stageCount(0));
+    for (let d = 0; d < 5; d++) expect(devilStage(d, 1)).toBeLessThanOrEqual(stageCount(d));
+  });
+
+  it('beating the devil is worth double', () => {
+    const base = { boardSize: 100, elapsedMs: 0, streak: 1, answerMs: 5000, golden: false };
+    expect(reward({ ...base, devil: true }).cells).toBeGreaterThanOrEqual(reward(base).cells * 2 - 1);
   });
 
   it('combo tiers', () => {

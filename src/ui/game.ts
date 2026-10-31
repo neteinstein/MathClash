@@ -1,10 +1,10 @@
 import { Board, other, type CellChange, type PlayerId } from '../board';
 import { BoardView, AVATAR_MARGIN, type Orientation, type PaintEvent } from '../renderer';
 import type { Fx } from '../fx';
-import { Avatar } from '../avatar';
+import { Avatar, devilSVG } from '../avatar';
 import { COLORS, applyColorVars, type PlayerColor } from '../colors';
 import { DIFFICULTIES, formatNumber, generateQuestion, type Question } from '../questions';
-import { COMBO_LABELS, WRONG_LOCK_MS, penalty, reward, stageFor } from '../rules';
+import { COMBO_LABELS, WRONG_LOCK_MS, devilStage, isDevilStreak, penalty, reward, stageFor } from '../rules';
 import { sfx, vibrate } from '../audio';
 import type { Settings } from '../settings';
 import { h, hasKeyboard, isLandscape, onPress, pulse } from './dom';
@@ -47,6 +47,12 @@ interface PlayerRt {
   fastest: number;
   recent: string[];
   shownPct: number;
+  /** Devil questions waiting for this player (sent by the opponent's 10-streaks). */
+  devilsPending: number;
+  /** The question on screen is a devil question. */
+  devilActive: boolean;
+  /** The little devil sitting next to this player's avatar. */
+  devilEl: HTMLDivElement | null;
 }
 
 export interface GameCallbacks {
@@ -119,7 +125,10 @@ export class GameScreen {
     const qtext = h('span', { class: 'qtext', text: '' });
     const streakBadge = h('div', { class: 'badge streak' });
     const levelBadge = h('div', { class: 'badge level' });
-    const qcard = h('div', { class: 'qcard' }, qtext, streakBadge, levelBadge, h('div', { class: 'badge gold', text: '⭐ x2' }));
+    const qcard = h('div', { class: 'qcard' }, qtext, streakBadge, levelBadge,
+      h('div', { class: 'badge gold', text: '⭐ x2' }),
+      h('div', { class: 'badge devilb', text: '😈 DIABINHO · x2' }),
+    );
     // Messages (+4, COMBO…) live on the board next to the player's avatar, never over the question.
     const floats = h('div', { class: `float-zone p${id}` });
     applyColorVars(floats, color);
@@ -145,7 +154,7 @@ export class GameScreen {
       id, color, difficulty: setup.difficulty, avatar, avatarWrap, panel, qcard, qtext,
       streakBadge, levelBadge, buttons, floats, timeEl, myPct, theirPct, myBar, theirBar, countdown,
       question: null, shownAt: 0, busy: true, timer: 0, correct: 0, wrong: 0, streak: 0, bestStreak: 0,
-      fastest: Infinity, recent: [], shownPct: 0,
+      fastest: Infinity, recent: [], shownPct: 0, devilsPending: 0, devilActive: false, devilEl: null,
     };
   }
 
@@ -202,6 +211,7 @@ export class GameScreen {
       z.style.setProperty('--u', `${unit}px`);
       z.classList.toggle('start', o === 'landscape' && p.id === 1);
       z.classList.toggle('end', o === 'landscape' && p.id === 2);
+      if (p.devilEl) this.placeDevil(p.devilEl, p.id);
     }
   }
 
@@ -238,18 +248,30 @@ export class GameScreen {
   }
 
   private nextQuestion(p: PlayerRt): void {
+    const devil = p.devilsPending > 0;
+    if (devil) p.devilsPending--;
+    p.devilActive = devil;
     const stage = stageFor(p.difficulty, p.correct);
-    const q = generateQuestion(p.difficulty, stage, { avoid: p.recent });
+    const q = generateQuestion(p.difficulty, devil ? devilStage(p.difficulty, stage) : stage, {
+      avoid: p.recent,
+      goldenChance: devil ? 0 : undefined,
+    });
     p.recent = [...p.recent.slice(-5), q.text];
     p.question = q;
     p.shownAt = this.elapsed;
     p.busy = false;
     p.qtext.textContent = q.text;
     p.qcard.classList.toggle('golden', q.golden);
+    p.qcard.classList.toggle('devil', devil);
     p.qcard.classList.toggle('long', q.text.length > 9);
     p.levelBadge.textContent = `${DIFFICULTIES[q.difficulty].emoji} Nv ${q.stage}`;
     pulse(p.qcard, 'enter', 400);
     if (q.golden) sfx.golden();
+    if (devil) {
+      sfx.devil();
+      p.avatar.react('shock', 'shake', 900);
+      if (p.devilEl) pulse(p.devilEl, 'cackle', 900);
+    }
     p.buttons.forEach((b, i) => {
       b.classList.remove('ok', 'bad', 'reveal');
       const label = formatNumber(q.options[i]);
@@ -270,13 +292,18 @@ export class GameScreen {
     const now = performance.now();
     const enemy = this.players[other(id)];
 
+    const wasDevil = p.devilActive;
+    p.devilActive = false;
+
     if (q.options[i] === q.answer) {
       p.correct++;
       p.streak++;
       p.bestStreak = Math.max(p.bestStreak, p.streak);
       const answerMs = this.elapsed - p.shownAt;
       p.fastest = Math.min(p.fastest, answerMs);
-      const rw = reward({ boardSize: this.board.size, elapsedMs: this.elapsed, streak: p.streak, answerMs, golden: q.golden });
+      const rw = reward({
+        boardSize: this.board.size, elapsedMs: this.elapsed, streak: p.streak, answerMs, golden: q.golden, devil: wasDevil,
+      });
       const changes = this.board.expand(id, rw.cells);
       this.view.queue(changes, now);
       const stolen = changes.filter((c) => c.from === enemy.id).length;
@@ -293,9 +320,11 @@ export class GameScreen {
         this.fx.stars(x, y, 10);
       }
       if (rw.fast) this.float(p, '⚡ RÁPIDO!', 'fast', 200);
-      if (rw.combo > 0 && (p.streak === 3 || p.streak === 5 || p.streak === 8 || p.streak % 5 === 0)) {
+      if (rw.combo > 0 && !isDevilStreak(p.streak) && (p.streak === 3 || p.streak === 5 || p.streak === 8 || p.streak % 5 === 0)) {
         this.float(p, `${COMBO_LABELS[rw.combo]} x${p.streak}`, `combo c${rw.combo}`, 300);
       }
+      if (wasDevil) this.devilBeaten(p);
+      if (isDevilStreak(p.streak)) this.sendDevil(p, enemy);
       if (stolen > 0) {
         enemy.avatar.react('shock', 'shake', 800);
         this.later(() => this.float(enemy, `−${stolen}`, 'minus'), 250);
@@ -322,6 +351,7 @@ export class GameScreen {
       p.avatar.react('sad', 'shake', 1100);
       if (changes.length) this.float(p, `−${changes.length}`, 'minus');
       else this.float(p, 'Ups!', 'minus');
+      if (wasDevil) this.devilWins(p);
       this.updateHud(p);
       p.timer = window.setTimeout(() => this.nextQuestion(p), WRONG_LOCK_MS);
     }
@@ -334,6 +364,9 @@ export class GameScreen {
     for (const p of this.each()) {
       window.clearTimeout(p.timer);
       p.busy = true;
+      p.devilsPending = 0;
+      p.devilActive = false;
+      if (p.devilEl) this.dismissDevil(p, 'leave');
     }
     const now = performance.now();
     if (winner) {
@@ -420,6 +453,106 @@ export class GameScreen {
     }
     for (const p of this.each()) this.updateHud(p);
     this.view.draw(now);
+  }
+
+  // ------------------------------------------------------------------ devil
+
+  /** Where a player's devil sits: beside their avatar, on the board, facing them. */
+  private devilSpot(id: PlayerId): { x: number; y: number; rot: number; size: number } {
+    const [ax, ay] = this.view.avatarAnchor(id);
+    const c = this.view.cell;
+    const size = c * 1.45;
+    const side = id === 1 ? 1 : -1;
+    if (this.orientation === 'portrait') return { x: ax + side * 1.8 * c, y: ay - side * 0.35 * c, rot: id === 1 ? 0 : 180, size };
+    return { x: ax + side * 0.35 * c, y: ay - 1.8 * c, rot: 0, size };
+  }
+
+  private placeDevil(el: HTMLDivElement, id: PlayerId): void {
+    const { x, y, rot, size } = this.devilSpot(id);
+    el.style.width = el.style.height = `${size}px`;
+    el.style.transform = `translate(${x - size / 2}px, ${y - size / 2}px) rotate(${rot}deg)`;
+  }
+
+  /** 10 in a row: a little devil flies across the board and hands the opponent a hard question. */
+  private sendDevil(from: PlayerRt, to: PlayerRt): void {
+    this.float(from, `🔥 ${from.streak} SEGUIDAS!`, 'combo c3', 150);
+    this.later(() => this.float(from, '😈 DIABINHO ENVIADO!', 'combo devil'), 650);
+    from.avatar.react('happy', 'spin', 900);
+    sfx.devil();
+    vibrate([30, 30, 30]);
+
+    const el = h('div', { class: 'devil-sprite flying' }, h('div', { class: 'devil-body', html: devilSVG() }));
+    this.arena.append(el);
+    const [x0, y0] = this.view.avatarAnchor(from.id);
+    const end = this.devilSpot(to.id);
+    const half = end.size / 2;
+    el.style.width = el.style.height = `${end.size}px`;
+    // Arc across the board: the middle point bulges sideways.
+    const mx = (x0 + end.x) / 2 + (this.orientation === 'portrait' ? -2.5 : 0) * this.view.cell;
+    const my = (y0 + end.y) / 2 + (this.orientation === 'landscape' ? -2.5 : 0) * this.view.cell;
+    const startRot = from.id === 1 || this.orientation === 'landscape' ? 0 : 180;
+    const anim = el.animate(
+      [
+        { transform: `translate(${x0 - half}px, ${y0 - half}px) scale(0.2) rotate(${startRot}deg)`, opacity: 0 },
+        { transform: `translate(${mx - half}px, ${my - half}px) scale(1.5) rotate(${startRot + 360}deg)`, opacity: 1, offset: 0.55 },
+        { transform: `translate(${end.x - half}px, ${end.y - half}px) scale(1) rotate(${end.rot + 720}deg)`, opacity: 1 },
+      ],
+      { duration: 1100, easing: 'cubic-bezier(.45,0,.25,1)' },
+    );
+    const land = () => {
+      if (!el.isConnected) return;
+      el.classList.remove('flying');
+      this.placeDevil(el, to.id);
+      if (this.state === 'over' || this.state === 'ending') {
+        el.remove();
+        return;
+      }
+      to.devilEl?.remove();
+      to.devilEl = el;
+      el.classList.add('sitting');
+      to.devilsPending++;
+      const sx = end.x + this.view.canvas.getBoundingClientRect().left;
+      const sy = end.y + this.view.canvas.getBoundingClientRect().top;
+      this.fx.splat(sx, sy, '#a855f7', 10, 1.1);
+      this.fx.splat(sx, sy, '#ef4444', 6, 0.9);
+      this.fx.ring(sx, sy, '#f0abfc', this.view.cell * 1.2);
+      to.avatar.react('shock', 'shake', 900);
+      this.float(to, '😈 CONTA DIFÍCIL!', 'combo devil');
+      // An idle player gets the devil's question right away; a busy one gets it next.
+      if (this.state === 'playing' && !to.busy) {
+        window.clearTimeout(to.timer);
+        this.nextQuestion(to);
+      }
+    };
+    anim.onfinish = land;
+  }
+
+  private devilBeaten(p: PlayerRt): void {
+    sfx.devilDefeated();
+    this.float(p, '😇 VENCESTE O DIABINHO!', 'combo angel', 150);
+    if (p.devilEl) {
+      const r = p.devilEl.getBoundingClientRect();
+      this.fx.stars(r.left + r.width / 2, r.top + r.height / 2, 12);
+      if (p.devilsPending === 0) this.dismissDevil(p, 'poof');
+    }
+  }
+
+  private devilWins(p: PlayerRt): void {
+    this.later(() => sfx.devil(), 250);
+    this.float(p, '😈 HA HA HA!', 'combo devil', 150);
+    if (p.devilEl) {
+      pulse(p.devilEl, 'cackle', 900);
+      if (p.devilsPending === 0) this.later(() => this.dismissDevil(p, 'leave'), 900);
+    }
+  }
+
+  private dismissDevil(p: PlayerRt, how: 'poof' | 'leave'): void {
+    const el = p.devilEl;
+    if (!el || p.devilActive || p.devilsPending > 0) return;
+    p.devilEl = null;
+    el.classList.remove('sitting', 'cackle');
+    el.classList.add(how);
+    window.setTimeout(() => el.remove(), 750);
   }
 
   // -------------------------------------------------------------------- HUD
