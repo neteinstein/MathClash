@@ -95,6 +95,9 @@ window.addEventListener('resize', () => {
 
 window.addEventListener('pointerdown', unlockAudio, { once: true });
 window.addEventListener('keydown', unlockAudio, { once: true });
+// iOS only lets audio start from touchend/click, and may pause it again later: retry on every tap.
+window.addEventListener('touchend', unlockAudio, { passive: true });
+window.addEventListener('click', unlockAudio);
 // Avoid long-press menus and pinch zoom getting in the way of fast tapping.
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('gesturestart', (e) => e.preventDefault());
