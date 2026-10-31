@@ -120,7 +120,9 @@ export class GameScreen {
     const streakBadge = h('div', { class: 'badge streak' });
     const levelBadge = h('div', { class: 'badge level' });
     const qcard = h('div', { class: 'qcard' }, qtext, streakBadge, levelBadge, h('div', { class: 'badge gold', text: '⭐ x2' }));
-    const floats = h('div', { class: 'floats' });
+    // Messages (+4, COMBO…) live on the board next to the player's avatar, never over the question.
+    const floats = h('div', { class: `float-zone p${id}` });
+    applyColorVars(floats, color);
     const countdown = h('div', { class: 'countdown' });
 
     const answers = h('div', { class: 'answers' });
@@ -133,7 +135,7 @@ export class GameScreen {
       buttons.push(b);
       answers.append(b);
     }
-    panel.append(header, h('div', { class: 'qwrap' }, qcard, floats), answers, countdown);
+    panel.append(header, h('div', { class: 'qwrap' }, qcard), answers, countdown);
 
     const avatar = new Avatar(setup.avatar);
     const avatarWrap = h('div', { class: `avatar-wrap p${id}` }, avatar.el);
@@ -160,7 +162,7 @@ export class GameScreen {
     this.board = new Board(w, hCells);
     this.view = new BoardView(this.board, { 1: this.players[1].color, 2: this.players[2].color });
     this.view.onPaint = (e) => this.onPaint(e);
-    this.arena.append(this.view.canvas, this.players[1].avatarWrap, this.players[2].avatarWrap);
+    this.arena.append(this.view.canvas, this.players[1].avatarWrap, this.players[2].avatarWrap, this.players[1].floats, this.players[2].floats);
     this.layout();
     for (const p of this.each()) this.updateHud(p, true);
     this.runCountdown();
@@ -181,12 +183,25 @@ export class GameScreen {
     const r = this.arena.getBoundingClientRect();
     this.view.layout(r.width, r.height, o);
     const size = this.view.cell * 1.7;
+    const unit = Math.max(15, Math.min(30, this.view.cell * 0.56));
     for (const p of this.each()) {
       const [x, y] = this.view.avatarAnchor(p.id);
       const s = p.avatarWrap.style;
       s.width = s.height = `${size}px`;
       s.left = `${x - size / 2}px`;
       s.top = `${y - size / 2}px`;
+      // Message spot: just past the avatar, on the board, growing towards the middle.
+      const reach = size / 2 + 6;
+      let fx = x;
+      let fy = y;
+      if (o === 'portrait') fy = p.id === 1 ? y - reach : y + reach;
+      else fx = p.id === 1 ? x + reach : x - reach;
+      const z = p.floats;
+      z.style.left = `${fx}px`;
+      z.style.top = `${fy}px`;
+      z.style.setProperty('--u', `${unit}px`);
+      z.classList.toggle('start', o === 'landscape' && p.id === 1);
+      z.classList.toggle('end', o === 'landscape' && p.id === 2);
     }
   }
 
@@ -274,7 +289,7 @@ export class GameScreen {
       this.float(p, `+${changes.length}`, 'plus');
       if (q.golden) {
         this.float(p, '⭐ DOURADA!', 'gold', 120);
-        const [x, y] = this.center(p.qcard);
+        const [x, y] = this.center(p.floats);
         this.fx.stars(x, y, 10);
       }
       if (rw.fast) this.float(p, '⚡ RÁPIDO!', 'fast', 200);
