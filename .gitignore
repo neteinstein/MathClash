@@ -4,3 +4,6 @@ dist/
 .DS_Store
 .vite/
 coverage/
+
+# /brag launch video work files
+brag-output*/

@@ -541,10 +541,13 @@ export class BoardView {
     const { ctx, cell: s } = this;
     const g = Math.max(1.5, s * 0.08);
     const rad = s * 0.24;
-    let l = x + (ext.l ? 0 : g / 2);
-    let r = x + s - (ext.r ? 0 : g / 2);
-    let t = y + (ext.t ? 0 : g / 2);
-    let b = y + s - (ext.b ? 0 : g / 2);
+    // Joined sides overlap by a hair: on fractional pixel ratios (1.5x tablets) touching
+    // edges would otherwise show faint antialiasing seams through the blob.
+    const j = -0.6;
+    let l = x + (ext.l ? j : g / 2);
+    let r = x + s - (ext.r ? j : g / 2);
+    let t = y + (ext.t ? j : g / 2);
+    let b = y + s - (ext.b ? j : g / 2);
     if (scale !== 1) {
       const cx = x + s / 2;
       const cy = y + s / 2;
