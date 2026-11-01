@@ -15,6 +15,15 @@ export type Side = 'bottom' | 'top' | 'left' | 'right';
 /** Where each player sits. */
 export const SIDE: Record<PlayerId, Side> = { 1: 'bottom', 2: 'top', 3: 'left', 4: 'right' };
 
+/**
+ * Where a player sits. With three on a tablet lying sideways, player 2 moves
+ * from the top to the right: the triangle board then points up and gets the
+ * room (going round the board, the players stay in the same order).
+ */
+export function sideOf(id: PlayerId, count: number, landscape: boolean): Side {
+  return count === 3 && landscape && id === 2 ? 'right' : SIDE[id];
+}
+
 /** Clockwise rotation (degrees) that turns content to face a player sitting on that side. */
 export const ANGLE: Record<Side, number> = { bottom: 0, top: 180, left: 90, right: 270 };
 
@@ -23,20 +32,6 @@ export interface Rect {
   y: number;
   w: number;
   h: number;
-}
-
-/** Unit vector pointing from a side of the screen towards its middle. */
-export function inward(side: Side): [number, number] {
-  switch (side) {
-    case 'bottom':
-      return [0, -1];
-    case 'top':
-      return [0, 1];
-    case 'left':
-      return [1, 0];
-    case 'right':
-      return [-1, 0];
-  }
 }
 
 /** The content area of a screen element (inside its safe-area padding), in the element's own coordinates. */

@@ -7,7 +7,7 @@ import { isSoundEnabled, setSoundEnabled, sfx, unlockAudio } from '../audio';
 import { h, isLandscape, isLargeScreen, pulse } from './dom';
 import { ICONS } from './icons';
 import { canRequestFullscreen, enterFullscreen, isFullscreen, isIOS } from './fullscreen';
-import { SIDE, clearSeat, contentBox, frame, measureDepth, placeSeat } from './seats';
+import { clearSeat, contentBox, frame, measureDepth, placeSeat, sideOf } from './seats';
 
 export interface MenuCallbacks {
   onStart(): void;
@@ -272,12 +272,13 @@ export class MenuScreen {
     // 3-4 players: each setup on its own side of the screen, facing its player; logo and options in the middle.
     const box = contentBox(this.el);
     this.el.style.setProperty('--vm', `${Math.min(box.w, box.h) / 100}px`);
-    const roots = new Map(this.active().map((id) => [SIDE[id], this.ui[id].root]));
+    const side = (id: PlayerId) => sideOf(id, count, box.w > box.h);
+    const roots = new Map(this.active().map((id) => [side(id), this.ui[id].root]));
     const { strips, middle } = frame(box, (side, len) => {
       const el = roots.get(side);
       return el ? measureDepth(el, len) : 0;
     });
-    for (const id of this.active()) placeSeat(this.ui[id].root, SIDE[id], strips[SIDE[id]]);
+    for (const id of this.active()) placeSeat(this.ui[id].root, side(id), strips[side(id)]);
     c.left = `${middle.x}px`;
     c.top = `${middle.y}px`;
     c.width = `${middle.w}px`;
@@ -346,7 +347,7 @@ export class MenuScreen {
           h('li', { html: '<b>10 acertos seguidos</b> enviam um 😈 diabinho: o adversário recebe uma conta bem mais difícil. Quem a acertar ganha a dobrar!' }),
           h('li', { html: 'O nível escolhe as contas: 🐣 <b>+ −</b>, 🙂 <b>+ − ×</b>, 😎 <b>+ − × ÷</b>, 🔥 e 🧠 <b>tudo</b>. A cada 4 acertos os números ficam maiores.' }),
           h('li', { html: 'Ganha quem pintar o tabuleiro todo — ou quem tiver mais quando o tempo acabar.' }),
-          h('li', { html: 'Num <b>tablet</b> podem jogar <b>até 4</b> (botão 👥): um em cada lado do ecrã. Quem fica sem território sai e os outros continuam; o 😈 vai para o adversário com mais território.' }),
+          h('li', { html: 'Num <b>tablet</b> podem jogar <b>até 4</b> (botão 👥): um em cada lado do ecrã — com 3, o tabuleiro é um <b>triângulo</b> 🔺. Quem fica sem território sai e os outros continuam; o 😈 vai para o adversário com mais território.' }),
         ),
         h('p', { class: 'help-tip', text: 'Dica: escolham níveis diferentes para jogar miúdos contra graúdos!' }),
         close,

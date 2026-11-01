@@ -8,7 +8,7 @@ Jogo de matemática **para 2 jogadores no mesmo ecrã (até 4 num tablet)** — 
 
 Pousem o telemóvel na mesa entre os dois: cada jogador fica numa ponta, com o seu avatar e a sua cor. Vão aparecendo contas cada vez mais difíceis, com 4 hipóteses de resposta. **Acertar faz a tua cor expandir pelo tabuleiro** (e roubar casas ao adversário!); **errar faz a tua cor encolher** um bocadinho. Ganha quem conquistar o tabuleiro todo — ou quem tiver mais território quando o tempo acabar.
 
-Num **tablet** podem jogar **3 ou 4**: cada um senta-se num lado do ecrã e tudo o que é seu (contas, respostas, avatar) fica virado para si.
+Num **tablet** podem jogar **3 ou 4**: cada um senta-se num lado do ecrã e tudo o que é seu (contas, respostas, avatar) fica virado para si. Com 3, o tabuleiro é um **triângulo** 🔺.
 
 Corre na **web** (também instalável como app e funciona offline) e em **Android** (APK nativo via Capacitor).
 
@@ -45,6 +45,7 @@ Com teclado (versão web em computador): Jogador 1 usa `1 2 3 4` ou `A S D F`, J
 Em ecrãs grandes (o lado mais curto com pelo menos 600 px — tablets, não telemóveis) aparece no menu o botão **👥 2/3/4 jogadores**. Com 3 ou 4:
 
 - Cada jogador fica num lado: **1 em baixo, 2 em cima, 3 à esquerda, 4 à direita** — o menu, as contas, o avatar e os cartões de pausa e de resultado ficam virados para cada um.
+- **Com 3 jogadores o tabuleiro é um triângulo** feito de triângulos pequenos, com um lado virado para cada jogador. Com o tablet em pé aponta para a direita ▶; deitado, o jogador 2 passa para a direita e o triângulo aponta para cima ▲, para aproveitar o ecrã. Com 4 o tabuleiro é quadriculado.
 - O tabuleiro tem um avatar em cada lado e podes roubar casas a qualquer adversário.
 - Quem fica sem território **sai do jogo** (😵 FORA!) e os outros continuam; ganha o último que resta, ou quem tiver mais território quando o tempo acabar.
 - O 😈 diabinho vai sempre para o adversário com mais território.
@@ -70,7 +71,7 @@ Truque para testar: abre `?bots=1,2` no URL e o computador joga sozinho dos dois
 ```
 src/
   questions.ts   gerador de contas (operações por nível, números a crescer por etapa) e respostas erradas plausíveis
-  board.ts       lógica do tabuleiro: expandir, encolher, roubar, inundação final
+  board.ts       lógica do tabuleiro (quadriculado, ou triangular a 3): expandir, encolher, roubar, inundação final
   rules.ts       equilíbrio do jogo: recompensas, penalizações, subida de nível
   renderer.ts    desenho do tabuleiro em canvas, com animação de "tinta a espalhar"
   avatar.ts      avatares SVG com expressões (feliz, triste, espantado, coroa…)
