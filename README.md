@@ -1,5 +1,9 @@
 # MathClash ⚔️➕✖️
 
+
+[![Vídeo de lançamento](assets/launch.jpg)](assets/launch.mp4)
+
+*Vídeo de lançamento (20 s), feito com [/brag](https://github.com/latent-spaces/brag).*
 Jogo de matemática **para 2 jogadores no mesmo ecrã (até 4 num tablet)** — ideal para passar o tempo enquanto esperam (no restaurante, no consultório, no carro…).
 
 Pousem o telemóvel na mesa entre os dois: cada jogador fica numa ponta, com o seu avatar e a sua cor. Vão aparecendo contas cada vez mais difíceis, com 4 hipóteses de resposta. **Acertar faz a tua cor expandir pelo tabuleiro** (e roubar casas ao adversário!); **errar faz a tua cor encolher** um bocadinho. Ganha quem conquistar o tabuleiro todo — ou quem tiver mais território quando o tempo acabar.
