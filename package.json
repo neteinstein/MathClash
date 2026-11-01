@@ -2,7 +2,7 @@
   "name": "mathclash",
   "private": true,
   "version": "1.0.0",
-  "description": "Jogo de matemática para dois jogadores no mesmo ecrã — conquista o tabuleiro com a tua cor!",
+  "description": "Jogo de matemática para 2 a 4 jogadores no mesmo ecrã — conquista o tabuleiro com a tua cor!",
   "type": "module",
   "scripts": {
     "dev": "vite --host",

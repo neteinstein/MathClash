@@ -123,6 +123,10 @@ export const sfx = {
   draw() {
     [0, 3, 0].forEach((s, i) => tone({ type: 'triangle', freq: NOTE(3 + s), dur: 0.25, vol: 0.2, delay: i * 0.2 }));
   },
+  /** Someone lost their last cell (with 3-4 players the game goes on without them). */
+  knockout() {
+    [7, 3, 0, -5].forEach((s, i) => tone({ type: 'triangle', freq: NOTE(3 + s), dur: i === 3 ? 0.4 : 0.15, vol: 0.2, delay: i * 0.11 }));
+  },
 };
 
 export function vibrate(pattern: number | number[]): void {

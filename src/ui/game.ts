@@ -1,4 +1,4 @@
-import { Board, other, type CellChange, type PlayerId } from '../board';
+import { Board, playerIds, type CellChange, type PlayerId } from '../board';
 import { BoardView, AVATAR_MARGIN, type Orientation, type PaintEvent } from '../renderer';
 import type { Fx } from '../fx';
 import { Avatar, devilSVG } from '../avatar';
@@ -9,13 +9,18 @@ import { sfx, vibrate } from '../audio';
 import type { Settings } from '../settings';
 import { h, hasKeyboard, isLandscape, onPress, pulse } from './dom';
 import { ICONS } from './icons';
+import { ANGLE, SIDE, contentBox, frame, inward, measureDepth, overlayFrame, placeSeat } from './seats';
 
 type State = 'countdown' | 'playing' | 'paused' | 'ending' | 'over';
 
 const KEYS: Record<PlayerId, string[][]> = {
   1: [['1', 'a'], ['2', 's'], ['3', 'd'], ['4', 'f']],
   2: [['7', 'h'], ['8', 'j'], ['9', 'k'], ['0', 'l']],
+  3: [['q'], ['w'], ['e'], ['r']],
+  4: [['y'], ['u'], ['i'], ['o']],
 };
+
+const MEDALS = ['', '🥇', '🥈', '🥉', '🏅'];
 
 interface PlayerRt {
   id: PlayerId;
@@ -34,7 +39,8 @@ interface PlayerRt {
   myPct: HTMLElement;
   theirPct: HTMLElement;
   myBar: HTMLElement;
-  theirBar: HTMLElement;
+  /** One bar per opponent, stacked from the right end of the tug bar. */
+  theirBars: { id: PlayerId; el: HTMLElement }[];
   countdown: HTMLDivElement;
   question: Question | null;
   shownAt: number;
@@ -47,12 +53,14 @@ interface PlayerRt {
   fastest: number;
   recent: string[];
   shownPct: number;
-  /** Devil questions waiting for this player (sent by the opponent's 10-streaks). */
+  /** Devil questions waiting for this player (sent by an opponent's 10-streaks). */
   devilsPending: number;
   /** The question on screen is a devil question. */
   devilActive: boolean;
   /** The little devil sitting next to this player's avatar. */
   devilEl: HTMLDivElement | null;
+  /** Lost every cell (3-4 players: the others play on). */
+  out: boolean;
 }
 
 export interface GameCallbacks {
@@ -63,6 +71,8 @@ export interface GameCallbacks {
 export interface GameOptions {
   /** Players controlled by the computer (only used for demos/testing). */
   bots?: PlayerId[];
+  /** How many play (2-4). With 3-4 there is one player on each side of the screen. */
+  players?: number;
 }
 
 export class GameScreen {
@@ -71,13 +81,17 @@ export class GameScreen {
   private readonly overlayHost: HTMLDivElement;
   private board!: Board;
   private view!: BoardView;
-  private readonly players: Record<PlayerId, PlayerRt>;
+  private readonly players: PlayerRt[];
+  /** 3-4 players around the screen (otherwise the classic two-player layout). */
+  private readonly multi: boolean;
   private state: State = 'countdown';
   private elapsed = 0;
   private lastSecond = -1;
   private orientation: Orientation;
   private readonly timers = new Set<number>();
   private finale = false;
+  /** Knocked-out players, first one out first. */
+  private readonly outOrder: PlayerId[] = [];
   private botTimers: Partial<Record<PlayerId, number>> = {};
   private readonly keyHandler = (e: KeyboardEvent) => this.onKey(e);
   private readonly visHandler = () => {
@@ -90,35 +104,51 @@ export class GameScreen {
     private readonly cb: GameCallbacks,
     private readonly opts: GameOptions = {},
   ) {
-    this.orientation = isLandscape() ? 'landscape' : 'portrait';
-    this.el = h('div', { class: `screen game ${this.orientation}` });
+    const ids = playerIds(opts.players ?? 2);
+    this.multi = ids.length > 2;
+    // With players all around, the board is drawn as is (player 1 at the bottom).
+    this.orientation = !this.multi && isLandscape() ? 'landscape' : 'portrait';
+    this.el = h('div', { class: `screen game ${this.multi ? 'multi' : this.orientation}` });
     this.arena = h('div', { class: 'arena' });
     this.overlayHost = h('div', { class: 'overlay-host' });
-    const p1 = this.makePlayer(1);
-    const p2 = this.makePlayer(2);
-    this.players = { 1: p1, 2: p2 };
-    this.el.append(p2.panel, this.arena, p1.panel, this.overlayHost);
+    this.players = ids.map((id) => this.makePlayer(id, ids));
+    if (this.multi) this.el.append(this.arena, ...this.players.map((p) => p.panel), this.overlayHost);
+    else this.el.append(this.player(2).panel, this.arena, this.player(1).panel, this.overlayHost);
     window.addEventListener('keydown', this.keyHandler);
     document.addEventListener('visibilitychange', this.visHandler);
   }
 
   // ------------------------------------------------------------------ setup
 
-  private makePlayer(id: PlayerId): PlayerRt {
+  private player(id: PlayerId): PlayerRt {
+    return this.players.find((p) => p.id === id)!;
+  }
+
+  /** Rotation that makes things face a player (degrees, clockwise). */
+  private angleOf(id: PlayerId): number {
+    if (this.multi) return ANGLE[SIDE[id]];
+    return this.orientation === 'portrait' && id === 2 ? 180 : 0;
+  }
+
+  private makePlayer(id: PlayerId, ids: PlayerId[]): PlayerRt {
     const setup = this.settings.players[id];
     const color = COLORS[setup.color];
-    const enemyColor = COLORS[this.settings.players[other(id)].color];
+    const opponents = ids.filter((q) => q !== id);
     const panel = h('section', { class: `panel p${id}` });
     applyColorVars(panel, color);
-    panel.style.setProperty('--ec', enemyColor.main);
+    panel.style.setProperty('--ec', COLORS[this.settings.players[opponents[0]].color].main);
 
     const pauseBtn = h('button', { class: 'hud-btn', html: ICONS.pause, attrs: { 'aria-label': 'Pausa' } });
     onPress(pauseBtn, () => this.pause());
     const myPct = h('b', { class: 'tug-pct mine', text: '0%' });
     const theirPct = h('b', { class: 'tug-pct theirs', text: '0%' });
     const myBar = h('i', { class: 'tug-fill mine' });
-    const theirBar = h('i', { class: 'tug-fill theirs' });
-    const tug = h('div', { class: 'tug' }, myPct, h('div', { class: 'tug-bar' }, myBar, theirBar), theirPct);
+    const theirBars = opponents.map((q) => {
+      const el = h('i', { class: 'tug-fill theirs' });
+      el.style.background = COLORS[this.settings.players[q].color].main;
+      return { id: q, el };
+    });
+    const tug = h('div', { class: 'tug' }, myPct, h('div', { class: 'tug-bar' }, myBar, ...theirBars.map((b) => b.el)), theirPct);
     const timeEl = h('span', { class: 'hud-time', text: '' });
     const header = h('header', { class: 'hud' }, pauseBtn, tug, timeEl);
 
@@ -144,56 +174,81 @@ export class GameScreen {
       buttons.push(b);
       answers.append(b);
     }
-    panel.append(header, h('div', { class: 'qwrap' }, qcard), answers, countdown);
+    const outMsg = h('div', { class: 'out-msg' }, h('b', { text: '😵 FORA!' }), h('span', { text: 'Ficaste sem território' }));
+    panel.append(header, h('div', { class: 'qwrap' }, qcard), answers, countdown, outMsg);
 
     const avatar = new Avatar(setup.avatar);
     const avatarWrap = h('div', { class: `avatar-wrap p${id}` }, avatar.el);
     applyColorVars(avatarWrap, color);
+    if (this.multi) {
+      // Avatar and messages face the player sitting on that side.
+      avatarWrap.style.setProperty('rotate', `${this.angleOf(id)}deg`);
+      floats.style.setProperty('rotate', `${this.angleOf(id)}deg`);
+    }
 
     return {
       id, color, difficulty: setup.difficulty, avatar, avatarWrap, panel, qcard, qtext,
-      streakBadge, levelBadge, buttons, floats, timeEl, myPct, theirPct, myBar, theirBar, countdown,
+      streakBadge, levelBadge, buttons, floats, timeEl, myPct, theirPct, myBar, theirBars, countdown,
       question: null, shownAt: 0, busy: true, timer: 0, correct: 0, wrong: 0, streak: 0, bestStreak: 0,
-      fastest: Infinity, recent: [], shownPct: 0, devilsPending: 0, devilActive: false, devilEl: null,
+      fastest: Infinity, recent: [], shownPct: 0, devilsPending: 0, devilActive: false, devilEl: null, out: false,
     };
   }
 
   /** Call once the element is in the DOM: sizes the board to the screen and starts the countdown. */
   start(): void {
+    if (this.multi) this.layoutSeats();
     const r = this.arena.getBoundingClientRect();
-    const portrait = this.orientation === 'portrait';
-    const across = portrait ? r.width : r.height;
-    const along = portrait ? r.height : r.width;
-    let w = Math.max(9, Math.min(13, Math.round(across / 44)));
-    if (w % 2 === 0) w--;
-    const s0 = BoardView.cellSizeFor(across, 1e9, w, 1, 'portrait');
-    const hCells = Math.max(8, Math.min(16, Math.round(along / s0 - AVATAR_MARGIN * 2)));
-    this.board = new Board(w, hCells);
-    this.view = new BoardView(this.board, { 1: this.players[1].color, 2: this.players[2].color });
+    const [w, hCells] = this.multi ? GameScreen.multiBoardSize(r.width, r.height) : this.boardSize(r.width, r.height);
+    this.board = new Board(w, hCells, this.players.map((p) => p.id));
+    const colors: Partial<Record<PlayerId, PlayerColor>> = {};
+    for (const p of this.players) colors[p.id] = p.color;
+    this.view = new BoardView(this.board, colors);
     this.view.onPaint = (e) => this.onPaint(e);
-    this.arena.append(this.view.canvas, this.players[1].avatarWrap, this.players[2].avatarWrap, this.players[1].floats, this.players[2].floats);
+    this.arena.append(this.view.canvas, ...this.players.map((p) => p.avatarWrap), ...this.players.map((p) => p.floats));
     this.layout();
-    for (const p of this.each()) this.updateHud(p, true);
+    for (const p of this.players) this.updateHud(p, true);
     this.runCountdown();
   }
 
-  private *each(): Generator<PlayerRt> {
-    yield this.players[1];
-    yield this.players[2];
+  /** Two players: cells across the screen and along the axis between them. */
+  private boardSize(width: number, height: number): [number, number] {
+    const portrait = this.orientation === 'portrait';
+    const across = portrait ? width : height;
+    const along = portrait ? height : width;
+    let w = Math.max(9, Math.min(13, Math.round(across / 44)));
+    if (w % 2 === 0) w--;
+    const s0 = BoardView.cellSizeFor(across, 1e9, w, 1, 'portrait');
+    return [w, Math.max(8, Math.min(16, Math.round(along / s0 - AVATAR_MARGIN * 2)))];
+  }
+
+  /** 3-4 players: odd sizes so the avatars on every side sit in the middle of their edge. */
+  static multiBoardSize(width: number, height: number): [number, number] {
+    const short = Math.min(width, height);
+    const long = Math.max(width, height);
+    let n = Math.max(9, Math.min(13, Math.round(short / 46)));
+    if (n % 2 === 0) n--;
+    const s0 = short / (n + AVATAR_MARGIN * 2);
+    let m = Math.max(n, Math.min(21, Math.round(long / s0 - AVATAR_MARGIN * 2)));
+    if (m % 2 === 0) m--;
+    return width <= height ? [n, m] : [m, n];
   }
 
   layout(): void {
-    const o: Orientation = isLandscape() ? 'landscape' : 'portrait';
-    if (o !== this.orientation) {
-      this.el.classList.replace(this.orientation, o);
-      this.orientation = o;
+    if (this.multi) this.layoutSeats();
+    else {
+      const o: Orientation = isLandscape() ? 'landscape' : 'portrait';
+      if (o !== this.orientation) {
+        this.el.classList.replace(this.orientation, o);
+        this.orientation = o;
+      }
     }
     if (!this.view) return;
+    const o = this.orientation;
     const r = this.arena.getBoundingClientRect();
     this.view.layout(r.width, r.height, o);
     const size = this.view.cell * 1.7;
     const unit = Math.max(15, Math.min(30, this.view.cell * 0.56));
-    for (const p of this.each()) {
+    for (const p of this.players) {
       const [x, y] = this.view.avatarAnchor(p.id);
       const s = p.avatarWrap.style;
       s.width = s.height = `${size}px`;
@@ -203,7 +258,11 @@ export class GameScreen {
       const reach = size / 2 + 6;
       let fx = x;
       let fy = y;
-      if (o === 'portrait') fy = p.id === 1 ? y - reach : y + reach;
+      if (this.multi) {
+        const [ux, uy] = inward(SIDE[p.id]);
+        fx += ux * reach;
+        fy += uy * reach;
+      } else if (o === 'portrait') fy = p.id === 1 ? y - reach : y + reach;
       else fx = p.id === 1 ? x + reach : x - reach;
       const z = p.floats;
       z.style.left = `${fx}px`;
@@ -213,6 +272,24 @@ export class GameScreen {
       z.classList.toggle('end', o === 'landscape' && p.id === 2);
       if (p.devilEl) this.placeDevil(p.devilEl, p.id);
     }
+  }
+
+  /** 3-4 players: a panel on each side of the screen, facing its player, and the board in the middle. */
+  private layoutSeats(): void {
+    const box = contentBox(this.el);
+    this.el.style.setProperty('--vm', `${Math.min(box.w, box.h) / 100}px`);
+    const panels = new Map(this.players.map((p) => [SIDE[p.id], p.panel]));
+    const { strips, middle } = frame(box, (side, len) => {
+      const el = panels.get(side);
+      return el ? measureDepth(el, len) : 0;
+    });
+    for (const p of this.players) placeSeat(p.panel, SIDE[p.id], strips[SIDE[p.id]]);
+    const s = this.arena.style;
+    s.left = `${middle.x}px`;
+    s.top = `${middle.y}px`;
+    s.width = `${middle.w}px`;
+    s.height = `${middle.h}px`;
+    this.layoutOverlay();
   }
 
   private later(fn: () => void, ms: number): void {
@@ -230,7 +307,7 @@ export class GameScreen {
     const steps = ['3', '2', '1', 'JÁ!'];
     steps.forEach((txt, k) => {
       this.later(() => {
-        for (const p of this.each()) {
+        for (const p of this.players) {
           p.countdown.textContent = txt;
           pulse(p.countdown, 'show', 900);
         }
@@ -238,7 +315,7 @@ export class GameScreen {
         else {
           sfx.go();
           this.state = 'playing';
-          for (const p of this.each()) {
+          for (const p of this.players) {
             p.avatar.react('happy', 'jump');
             this.nextQuestion(p);
           }
@@ -248,6 +325,7 @@ export class GameScreen {
   }
 
   private nextQuestion(p: PlayerRt): void {
+    if (p.out) return;
     const devil = p.devilsPending > 0;
     if (devil) p.devilsPending--;
     p.devilActive = devil;
@@ -284,13 +362,12 @@ export class GameScreen {
   }
 
   private answer(id: PlayerId, i: number): void {
-    const p = this.players[id];
-    if (this.state !== 'playing' || p.busy || !p.question) return;
+    const p = this.player(id);
+    if (!p || this.state !== 'playing' || p.busy || p.out || !p.question) return;
     p.busy = true;
     const q = p.question;
     const btn = p.buttons[i];
     const now = performance.now();
-    const enemy = this.players[other(id)];
 
     const wasDevil = p.devilActive;
     p.devilActive = false;
@@ -306,7 +383,8 @@ export class GameScreen {
       });
       const changes = this.board.expand(id, rw.cells);
       this.view.queue(changes, now);
-      const stolen = changes.filter((c) => c.from === enemy.id).length;
+      const stolen = new Map<PlayerId, number>();
+      for (const c of changes) if (c.from !== 0) stolen.set(c.from, (stolen.get(c.from) ?? 0) + 1);
 
       btn.classList.add('ok');
       pulse(p.qcard, 'good', 500);
@@ -324,19 +402,29 @@ export class GameScreen {
         this.float(p, `${COMBO_LABELS[rw.combo]} x${p.streak}`, `combo c${rw.combo}`, 300);
       }
       if (wasDevil) this.devilBeaten(p);
-      if (isDevilStreak(p.streak)) this.sendDevil(p, enemy);
-      if (stolen > 0) {
-        enemy.avatar.react('shock', 'shake', 800);
-        this.later(() => this.float(enemy, `−${stolen}`, 'minus'), 250);
-        if (stolen >= 4) pulse(this.arena, 'shake', 400);
+      if (isDevilStreak(p.streak)) {
+        const target = this.devilTarget(p);
+        if (target) this.sendDevil(p, target);
       }
+      let totalStolen = 0;
+      for (const [vid, n] of stolen) {
+        const victim = this.player(vid);
+        totalStolen += n;
+        victim.avatar.react('shock', 'shake', 800);
+        this.later(() => this.float(victim, `−${n}`, 'minus'), 250);
+      }
+      if (totalStolen >= 4) pulse(this.arena, 'shake', 400);
       this.updateHud(p);
 
-      if (this.board.count(enemy.id) === 0) {
+      const alive = this.board.alive();
+      const knockedOut = [...stolen.keys()].filter((vid) => !alive.includes(vid));
+      if (alive.length <= 1) {
+        for (const vid of knockedOut) this.knockOut(this.player(vid), false);
         this.state = 'ending';
-        this.later(() => this.finish(id, 'ko'), changes.length * 55 + 600);
+        this.later(() => this.finish([id], 'ko'), changes.length * 55 + 600);
         return;
       }
+      for (const vid of knockedOut) this.knockOut(this.player(vid), true);
       p.timer = window.setTimeout(() => this.nextQuestion(p), 380);
     } else {
       p.wrong++;
@@ -357,11 +445,45 @@ export class GameScreen {
     }
   }
 
-  private finish(winner: PlayerId | 0, reason: 'ko' | 'time'): void {
+  /**
+   * A player lost their last cell. With 3-4 players the others play on
+   * (`show`: their panel says so); otherwise the match is over anyway.
+   */
+  private knockOut(v: PlayerRt, show: boolean): void {
+    if (v.out) return;
+    v.out = true;
+    v.busy = true;
+    v.question = null;
+    v.streak = 0;
+    v.devilsPending = 0;
+    v.devilActive = false;
+    window.clearTimeout(v.timer);
+    window.clearTimeout(this.botTimers[v.id]);
+    this.outOrder.push(v.id);
+    if (v.devilEl) this.dismissDevil(v, 'leave');
+    if (!show) return;
+    v.panel.classList.add('out');
+    v.avatarWrap.classList.add('out');
+    v.avatar.setMood('lose');
+    v.avatar.play('shake');
+    this.later(() => this.float(v, '😵 FORA!', 'combo c3'), 450);
+    this.later(() => sfx.knockout(), 250);
+    vibrate([60, 40, 120]);
+  }
+
+  /** Ranks every player: territory for those still in, then the knocked out, last one out first. */
+  private placings(): Map<PlayerId, number> {
+    const score = (p: PlayerRt) => (p.out ? this.outOrder.indexOf(p.id) - this.outOrder.length : this.board.count(p.id));
+    const scores = this.players.map(score);
+    return new Map(this.players.map((p, k) => [p.id, 1 + scores.filter((s) => s > scores[k]).length]));
+  }
+
+  private finish(winners: PlayerId[], reason: 'ko' | 'time'): void {
     if (this.state === 'over') return;
     this.state = 'over';
+    const places = this.placings();
     this.stopBots();
-    for (const p of this.each()) {
+    for (const p of this.players) {
       window.clearTimeout(p.timer);
       p.busy = true;
       p.devilsPending = 0;
@@ -369,25 +491,27 @@ export class GameScreen {
       if (p.devilEl) this.dismissDevil(p, 'leave');
     }
     const now = performance.now();
-    if (winner) {
+    if (winners.length === 1) {
       this.finale = true;
-      const changes: CellChange[] = this.board.flood(winner);
+      const changes: CellChange[] = this.board.flood(winners[0]);
       this.view.queue(changes, now, 45, 380);
-      const w = this.players[winner];
-      const l = this.players[other(winner)];
+      const w = this.player(winners[0]);
       w.avatar.setMood('win');
       w.avatar.play('jump');
-      l.avatar.setMood('lose');
-      l.avatar.play('shake');
+      for (const l of this.players) {
+        if (l === w) continue;
+        l.avatar.setMood('lose');
+        l.avatar.play('shake');
+      }
       w.avatarWrap.classList.add('winner');
       sfx.win();
       const maxOrder = changes.reduce((m, c) => Math.max(m, c.order), 0);
       this.later(() => this.fx.confetti([w.color.main, w.color.light, '#fde047', '#ffffff'], 3500), Math.min(1500, maxOrder * 45));
     } else {
       sfx.draw();
-      for (const p of this.each()) p.avatar.setMood('shock');
+      for (const p of this.players) p.avatar.setMood(winners.includes(p.id) ? 'shock' : 'lose');
     }
-    this.later(() => this.showResults(winner, reason), winner ? 1500 : 700);
+    this.later(() => this.showResults(winners, reason, places), winners.length === 1 ? 1500 : 700);
   }
 
   // ------------------------------------------------------------------ pause
@@ -395,7 +519,7 @@ export class GameScreen {
   pause(): void {
     if (this.state !== 'playing') return;
     this.state = 'paused';
-    for (const p of this.each()) window.clearTimeout(p.timer);
+    for (const p of this.players) window.clearTimeout(p.timer);
     this.stopBots();
     sfx.tap();
     this.showDual('pause', (p) => [
@@ -426,7 +550,7 @@ export class GameScreen {
     this.overlayHost.replaceChildren();
     this.state = 'playing';
     // Whoever was mid-answer gets a fresh question.
-    for (const p of this.each()) this.nextQuestion(p);
+    for (const p of this.players) this.nextQuestion(p);
   }
 
   // ------------------------------------------------------------------- tick
@@ -443,28 +567,52 @@ export class GameScreen {
           if (left <= 10 && left > 0) sfx.tick();
         }
         if (this.elapsed >= limit) {
-          const a = this.board.count(1);
-          const b = this.board.count(2);
+          // Most territory wins; a tie for the top is a draw between them.
+          const counts = this.players.map((p) => this.board.count(p.id));
+          const best = Math.max(...counts);
+          const winners = this.players.filter((_, k) => counts[k] === best).map((p) => p.id);
           this.state = 'ending';
-          for (const p of this.each()) this.float(p, 'TEMPO!', 'combo c2');
-          this.later(() => this.finish(a === b ? 0 : a > b ? 1 : 2, 'time'), 700);
+          for (const p of this.players) this.float(p, 'TEMPO!', 'combo c2');
+          this.later(() => this.finish(winners, 'time'), 700);
         }
       }
     }
-    for (const p of this.each()) this.updateHud(p);
+    for (const p of this.players) this.updateHud(p);
     this.view.draw(now);
   }
 
   // ------------------------------------------------------------------ devil
+
+  /** Who gets the devil: the opponent with the most territory (the only one with 2 players). */
+  private devilTarget(from: PlayerRt): PlayerRt | null {
+    let best: PlayerRt | null = null;
+    let bestCount = -1;
+    for (const q of this.players) {
+      if (q === from || q.out) continue;
+      const n = this.board.count(q.id);
+      if (n > bestCount) {
+        best = q;
+        bestCount = n;
+      }
+    }
+    return best;
+  }
 
   /** Where a player's devil sits: beside their avatar, on the board, facing them. */
   private devilSpot(id: PlayerId): { x: number; y: number; rot: number; size: number } {
     const [ax, ay] = this.view.avatarAnchor(id);
     const c = this.view.cell;
     const size = c * 1.45;
-    const side = id === 1 ? 1 : -1;
-    if (this.orientation === 'portrait') return { x: ax + side * 1.8 * c, y: ay - side * 0.35 * c, rot: id === 1 ? 0 : 180, size };
-    return { x: ax + side * 0.35 * c, y: ay - 1.8 * c, rot: 0, size };
+    if (this.orientation === 'landscape') {
+      const side = id === 1 ? 1 : -1;
+      return { x: ax + side * 0.35 * c, y: ay - 1.8 * c, rot: 0, size };
+    }
+    // To the player's right and a little towards the middle, in their own frame.
+    const rot = this.angleOf(id);
+    const a = (rot * Math.PI) / 180;
+    const [rx, ry] = [Math.cos(a), Math.sin(a)];
+    const [ux, uy] = [Math.sin(a), -Math.cos(a)];
+    return { x: ax + (1.8 * rx + 0.35 * ux) * c, y: ay + (1.8 * ry + 0.35 * uy) * c, rot, size };
   }
 
   private placeDevil(el: HTMLDivElement, id: PlayerId): void {
@@ -473,7 +621,7 @@ export class GameScreen {
     el.style.transform = `translate(${x - size / 2}px, ${y - size / 2}px) rotate(${rot}deg)`;
   }
 
-  /** 10 in a row: a little devil flies across the board and hands the opponent a hard question. */
+  /** 10 in a row: a little devil flies across the board and hands an opponent a hard question. */
   private sendDevil(from: PlayerRt, to: PlayerRt): void {
     this.float(from, `🔥 ${from.streak} SEGUIDAS!`, 'combo c3', 150);
     this.later(() => this.float(from, '😈 DIABINHO ENVIADO!', 'combo devil'), 650);
@@ -488,9 +636,19 @@ export class GameScreen {
     const half = end.size / 2;
     el.style.width = el.style.height = `${end.size}px`;
     // Arc across the board: the middle point bulges sideways.
-    const mx = (x0 + end.x) / 2 + (this.orientation === 'portrait' ? -2.5 : 0) * this.view.cell;
-    const my = (y0 + end.y) / 2 + (this.orientation === 'landscape' ? -2.5 : 0) * this.view.cell;
-    const startRot = from.id === 1 || this.orientation === 'landscape' ? 0 : 180;
+    let mx: number;
+    let my: number;
+    if (this.multi) {
+      const dx = end.x - x0;
+      const dy = end.y - y0;
+      const len = Math.hypot(dx, dy) || 1;
+      mx = (x0 + end.x) / 2 + (dy / len) * 2.5 * this.view.cell;
+      my = (y0 + end.y) / 2 - (dx / len) * 2.5 * this.view.cell;
+    } else {
+      mx = (x0 + end.x) / 2 + (this.orientation === 'portrait' ? -2.5 : 0) * this.view.cell;
+      my = (y0 + end.y) / 2 + (this.orientation === 'landscape' ? -2.5 : 0) * this.view.cell;
+    }
+    const startRot = this.angleOf(from.id);
     const anim = el.animate(
       [
         { transform: `translate(${x0 - half}px, ${y0 - half}px) scale(0.2) rotate(${startRot}deg)`, opacity: 0 },
@@ -503,7 +661,7 @@ export class GameScreen {
       if (!el.isConnected) return;
       el.classList.remove('flying');
       this.placeDevil(el, to.id);
-      if (this.state === 'over' || this.state === 'ending') {
+      if (this.state === 'over' || this.state === 'ending' || to.out) {
         el.remove();
         return;
       }
@@ -562,15 +720,29 @@ export class GameScreen {
   }
 
   private updateHud(p: PlayerRt, instant = false): void {
-    const mine = this.board.count(p.id) / this.board.size;
-    const theirs = this.board.count(other(p.id)) / this.board.size;
+    const size = this.board.size;
+    const mine = this.board.count(p.id) / size;
     p.shownPct = instant ? mine : p.shownPct + (mine - p.shownPct) * 0.12;
     const myPct = Math.round(mine * 100);
-    const theirPct = Math.round(theirs * 100);
     if (p.myPct.textContent !== `${myPct}%`) p.myPct.textContent = `${myPct}%`;
-    if (p.theirPct.textContent !== `${theirPct}%`) p.theirPct.textContent = `${theirPct}%`;
     p.myBar.style.width = `${(p.shownPct * 100).toFixed(1)}%`;
-    p.theirBar.style.width = `${(theirs * 100).toFixed(1)}%`;
+    // Opponents fill the bar from the other end; the number shows the strongest one.
+    let right = 0;
+    let lead = p.theirBars[0];
+    let leadShare = -1;
+    for (const b of p.theirBars) {
+      const share = this.board.count(b.id) / size;
+      b.el.style.right = `${(right * 100).toFixed(1)}%`;
+      b.el.style.width = `${(share * 100).toFixed(1)}%`;
+      right += share;
+      if (share > leadShare) {
+        leadShare = share;
+        lead = b;
+      }
+    }
+    const theirPct = `${Math.round(leadShare * 100)}%`;
+    if (p.theirPct.textContent !== theirPct) p.theirPct.textContent = theirPct;
+    if (this.multi) p.theirPct.style.color = this.player(lead.id).color.main;
 
     const limit = this.settings.duration;
     let t: string;
@@ -608,7 +780,7 @@ export class GameScreen {
   }
 
   private onPaint(e: PaintEvent): void {
-    const color = e.to === 0 ? '#8b86b8' : this.players[e.to].color.main;
+    const color = e.to === 0 ? '#8b86b8' : this.player(e.to).color.main;
     if (this.finale) {
       if (Math.random() < 0.35) this.fx.splat(e.x, e.y, color, 3, 0.8);
       sfx.pop(false);
@@ -617,7 +789,7 @@ export class GameScreen {
     const stolen = e.from !== 0 && e.to !== 0;
     this.fx.splat(e.x, e.y, color, stolen ? 9 : 5, stolen ? 1.2 : 0.9);
     if (stolen) {
-      this.fx.splat(e.x, e.y, this.players[e.from as PlayerId].color.light, 4, 0.7);
+      this.fx.splat(e.x, e.y, this.player(e.from as PlayerId).color.light, 4, 0.7);
       this.fx.ring(e.x, e.y, '#ffffff', this.view.cell);
     }
     if (e.to === 0) sfx.shrink();
@@ -639,32 +811,49 @@ export class GameScreen {
     return row;
   }
 
-  /** Overlay split in two halves, each facing its player. */
+  /** Overlay with one card per player, each facing its player (two halves with 2 players). */
   private showDual(kind: string, content: (p: PlayerRt) => HTMLElement[]): void {
-    const halves = [this.players[2], this.players[1]].map((p) => {
-      const half = h('div', { class: `dual-half p${p.id}` }, h('div', { class: 'dual-card' }, ...content(p)));
+    const order = this.multi ? this.players : [this.player(2), this.player(1)];
+    const halves = order.map((p) => {
+      const half = h('div', { class: `dual-half p${p.id}`, attrs: { 'data-id': String(p.id) } }, h('div', { class: 'dual-card' }, ...content(p)));
       applyColorVars(half, p.color);
       return half;
     });
     this.overlayHost.replaceChildren(h('div', { class: `dual ${kind}` }, ...halves));
+    this.layoutOverlay();
   }
 
-  private showResults(winner: PlayerId | 0, reason: 'ko' | 'time'): void {
+  /** 3-4 players: each card sits on its player's side of the screen. */
+  private layoutOverlay(): void {
+    if (!this.multi) return;
+    const halves = this.overlayHost.querySelectorAll<HTMLElement>('.dual-half');
+    if (!halves.length) return;
+    const strips = overlayFrame(contentBox(this.el));
+    for (const el of halves) {
+      const side = SIDE[Number(el.dataset.id) as PlayerId];
+      placeSeat(el, side, strips[side]);
+    }
+  }
+
+  private showResults(winners: PlayerId[], reason: 'ko' | 'time', places: Map<PlayerId, number>): void {
+    const draw = winners.length > 1;
     this.showDual('results', (p) => {
-      const won = winner === p.id;
-      const lost = winner !== 0 && !won;
-      const title = won ? 'GANHASTE!' : lost ? 'PERDESTE!' : 'EMPATE!';
-      const emoji = won ? '🏆' : lost ? '😵' : '🤝';
+      const won = !draw && winners[0] === p.id;
+      const tied = draw && winners.includes(p.id);
+      const title = won ? 'GANHASTE!' : tied ? 'EMPATE!' : 'PERDESTE!';
+      const emoji = won ? '🏆' : tied ? '🤝' : '😵';
       let sub: string;
       if (won) sub = reason === 'ko' ? 'Conquistaste o tabuleiro todo!' : 'Acabou o tempo e tinhas mais território!';
-      else if (lost) sub = reason === 'ko' ? 'Ficaste sem território… Revanche?' : 'Por um triz! Para a próxima é tua.';
-      else sub = 'Exatamente o mesmo território!';
+      else if (tied) sub = 'Exatamente o mesmo território!';
+      else sub = p.out ? 'Ficaste sem território… Revanche?' : 'Por um triz! Para a próxima é tua.';
       const total = p.correct + p.wrong;
       const acc = total ? Math.round((p.correct / total) * 100) : 0;
       const fastest = Number.isFinite(p.fastest) ? `${(p.fastest / 1000).toFixed(1).replace('.', ',')}s` : '—';
       const stat = (v: string, l: string) => h('div', { class: 'stat' }, h('b', { text: v }), h('span', { text: l }));
+      const place = places.get(p.id) ?? 1;
       return [
-        h('div', { class: `dual-title ${won ? 'won' : lost ? 'lost' : ''}`, text: `${emoji} ${title}` }),
+        h('div', { class: `dual-title ${won ? 'won' : tied ? '' : 'lost'}`, text: `${emoji} ${title}` }),
+        this.multi ? h('div', { class: 'dual-place', text: `${MEDALS[place]} ${place}.º lugar` }) : null,
         h('div', { class: 'dual-sub', text: sub }),
         h('div', { class: 'stats' },
           stat(`${p.correct}/${total}`, `acertos (${acc}%)`),
@@ -675,7 +864,7 @@ export class GameScreen {
           { label: 'Revanche', icon: ICONS.again, primary: true, fn: () => this.cb.onRematch() },
           { label: 'Menu', icon: ICONS.home, fn: () => this.cb.onMenu() },
         ]),
-      ];
+      ].filter((el): el is HTMLElement => el !== null);
     });
   }
 
@@ -688,12 +877,11 @@ export class GameScreen {
       if (!this.back() && this.state === 'over') this.cb.onMenu();
       return;
     }
-    for (const id of [1, 2] as PlayerId[]) {
-      const i = KEYS[id].findIndex((keys) => keys.includes(k));
+    for (const p of this.players) {
+      const i = KEYS[p.id].findIndex((keys) => keys.includes(k));
       if (i >= 0) {
-        const b = this.players[id].buttons[i];
-        pulse(b, 'pressed', 150);
-        this.answer(id, i);
+        pulse(p.buttons[i], 'pressed', 150);
+        this.answer(p.id, i);
         return;
       }
     }
@@ -716,13 +904,13 @@ export class GameScreen {
   }
 
   private stopBots(): void {
-    for (const id of [1, 2] as PlayerId[]) window.clearTimeout(this.botTimers[id]);
+    for (const p of this.players) window.clearTimeout(this.botTimers[p.id]);
   }
 
   destroy(): void {
     this.stopBots();
     for (const id of this.timers) window.clearTimeout(id);
-    for (const p of this.each()) window.clearTimeout(p.timer);
+    for (const p of this.players) window.clearTimeout(p.timer);
     window.removeEventListener('keydown', this.keyHandler);
     document.removeEventListener('visibilitychange', this.visHandler);
     this.fx.clear();

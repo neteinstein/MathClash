@@ -1,8 +1,10 @@
 # MathClash ⚔️➕✖️
 
-Jogo de matemática **para dois jogadores no mesmo ecrã** — ideal para passar o tempo enquanto esperam (no restaurante, no consultório, no carro…).
+Jogo de matemática **para 2 jogadores no mesmo ecrã (até 4 num tablet)** — ideal para passar o tempo enquanto esperam (no restaurante, no consultório, no carro…).
 
 Pousem o telemóvel na mesa entre os dois: cada jogador fica numa ponta, com o seu avatar e a sua cor. Vão aparecendo contas cada vez mais difíceis, com 4 hipóteses de resposta. **Acertar faz a tua cor expandir pelo tabuleiro** (e roubar casas ao adversário!); **errar faz a tua cor encolher** um bocadinho. Ganha quem conquistar o tabuleiro todo — ou quem tiver mais território quando o tempo acabar.
+
+Num **tablet** podem jogar **3 ou 4**: cada um senta-se num lado do ecrã e tudo o que é seu (contas, respostas, avatar) fica virado para si.
 
 Corre na **web** (também instalável como app e funciona offline) e em **Android** (APK nativo via Capacitor).
 
@@ -18,7 +20,7 @@ Corre na **web** (também instalável como app e funciona offline) e em **Androi
    | 🔥 Difícil | tudo: contas mistas, número em falta, quadrados, raízes, percentagens, negativos… |
    | 🧠 Génio | tudo, a começar já com números grandes |
 
-2. Escolham a duração (1, 2, 3 min ou sem limite) e carreguem os dois em **PRONTO!**
+2. Escolham a duração (1, 2, 3 min ou sem limite) e carreguem todos em **PRONTO!**
 3. Depois do 3, 2, 1… respondam o mais depressa possível. Cada jogador tem as suas próprias contas, viradas para si.
 
 | | |
@@ -28,11 +30,23 @@ Corre na **web** (também instalável como app e funciona offline) e em **Androi
 | 🔥 Série de acertos | 3, 5 e 8 seguidas dão cada vez mais casas |
 | ⚡ Resposta rápida | Menos de 2,5 s dá bónus |
 | ⭐ Conta dourada | Vale o dobro |
-| 😈 Diabinho | 10 acertos seguidos enviam um diabinho que atravessa o tabuleiro: o adversário recebe uma conta bem mais difícil (mesmas operações do nível dele, números maiores). Se a acertar, vale a dobrar |
+| 😈 Diabinho | 10 acertos seguidos enviam um diabinho que atravessa o tabuleiro: o adversário (com 3-4 jogadores, o que tem mais território) recebe uma conta bem mais difícil (mesmas operações do nível dele, números maiores). Se a acertar, vale a dobrar |
 | 📈 Dificuldade | A cada 4 acertos os números ficam maiores (as operações não mudam); com o passar do tempo cada acerto vale mais |
 | 🏠 Casa do avatar | Só pode ser roubada quando é a última — é o golpe final! |
 
-Com teclado (versão web em computador): Jogador 1 usa `1 2 3 4` ou `A S D F`, Jogador 2 usa `7 8 9 0` ou `H J K L`. `Esc` ou `P` pausa.
+Com teclado (versão web em computador): Jogador 1 usa `1 2 3 4` ou `A S D F`, Jogador 2 usa `7 8 9 0` ou `H J K L`, Jogador 3 usa `Q W E R` e Jogador 4 usa `Y U I O`. `Esc` ou `P` pausa.
+
+### Até 4 jogadores (tablets)
+
+Em ecrãs grandes (o lado mais curto com pelo menos 600 px — tablets, não telemóveis) aparece no menu o botão **👥 2/3/4 jogadores**. Com 3 ou 4:
+
+- Cada jogador fica num lado: **1 em baixo, 2 em cima, 3 à esquerda, 4 à direita** — o menu, as contas, o avatar e os cartões de pausa e de resultado ficam virados para cada um.
+- O tabuleiro tem um avatar em cada lado e podes roubar casas a qualquer adversário.
+- Quem fica sem território **sai do jogo** (😵 FORA!) e os outros continuam; ganha o último que resta, ou quem tiver mais território quando o tempo acabar.
+- O 😈 diabinho vai sempre para o adversário com mais território.
+- No fim, cada um vê o seu lugar (🥇 🥈 🥉).
+
+Num telemóvel joga-se sempre a 2.
 
 ## Desenvolvimento
 
@@ -45,7 +59,7 @@ npm test           # testes (gerador de contas, tabuleiro, regras)
 npm run build      # versão web final em dist/
 ```
 
-Truque para testar: abre `?bots=1,2` no URL e o computador joga sozinho dos dois lados.
+Truque para testar: abre `?bots=1,2` no URL e o computador joga sozinho dos dois lados (`?bots=1,2,3,4` para um jogo a 4).
 
 ### Estrutura
 
@@ -60,6 +74,7 @@ src/
   audio.ts       efeitos sonoros sintetizados (sem ficheiros de áudio)
   ui/menu.ts     ecrã inicial (configuração de cada jogador)
   ui/game.ts     ecrã de jogo, pausa e resultados
+  ui/seats.ts    disposição a 3-4 jogadores: um lugar em cada lado do ecrã, rodado para quem lá está
 android/         projeto nativo Android (Capacitor)
 ```
 

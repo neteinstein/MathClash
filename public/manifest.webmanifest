@@ -1,7 +1,7 @@
 {
   "name": "MathClash",
   "short_name": "MathClash",
-  "description": "Jogo de matemática para dois jogadores no mesmo ecrã: acerta nas contas e pinta o tabuleiro com a tua cor!",
+  "description": "Jogo de matemática para 2 a 4 jogadores no mesmo ecrã: acerta nas contas e pinta o tabuleiro com a tua cor!",
   "lang": "pt",
   "start_url": "./",
   "scope": "./",

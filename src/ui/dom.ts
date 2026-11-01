@@ -43,4 +43,9 @@ export function onPress(el: HTMLElement, fn: (e: Event) => void): void {
 
 export const isLandscape = (): boolean => window.innerWidth > window.innerHeight * 1.05;
 
+/** Smallest side (CSS px) a screen needs to fit 3-4 players, one on each side: tablets, not phones. */
+export const MULTI_MIN_SIDE = 600;
+
+export const isLargeScreen = (): boolean => Math.min(window.innerWidth, window.innerHeight) >= MULTI_MIN_SIDE;
+
 export const hasKeyboard = (): boolean => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
