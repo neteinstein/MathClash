@@ -865,7 +865,7 @@ export class GameScreen {
       let sub: string;
       if (won) sub = reason === 'ko' ? 'Conquistaste o tabuleiro todo!' : 'Acabou o tempo e tinhas mais território!';
       else if (tied) sub = 'Exatamente o mesmo território!';
-      else sub = p.out ? 'Ficaste sem território… Revanche?' : 'Por um triz! Para a próxima é tua.';
+      else sub = p.out ? 'Ficaste sem território… Desforra?' : 'Por um triz! Para a próxima é tua.';
       const total = p.correct + p.wrong;
       const acc = total ? Math.round((p.correct / total) * 100) : 0;
       const fastest = Number.isFinite(p.fastest) ? `${(p.fastest / 1000).toFixed(1).replace('.', ',')}s` : '—';
@@ -881,7 +881,7 @@ export class GameScreen {
           stat(fastest, 'mais rápida'),
         ),
         this.actions([
-          { label: 'Revanche', icon: ICONS.again, primary: true, fn: () => this.cb.onRematch() },
+          { label: 'Desforra', icon: ICONS.again, primary: true, fn: () => this.cb.onRematch() },
           { label: 'Menu', icon: ICONS.home, fn: () => this.cb.onMenu() },
         ]),
       ].filter((el): el is HTMLElement => el !== null);
