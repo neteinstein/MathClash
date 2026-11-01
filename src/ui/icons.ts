@@ -12,6 +12,7 @@ export const ICONS = {
   timer: svg('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 2.5h5"/>'),
   fullscreen: svg('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'),
   close: svg('<path d="M6 6l12 12M18 6 6 18"/>'),
+  players: svg('<circle cx="9" cy="8.5" r="3.2"/><path d="M3 19.5c.6-3.3 3-5.2 6-5.2s5.4 1.9 6 5.2"/><path d="M15.5 5.6a3.2 3.2 0 0 1 0 6M17.6 14.6c1.8.7 3 2.4 3.4 4.9"/>'),
   chevL: svg('<path d="M15 5l-7 7 7 7"/>'),
   chevR: svg('<path d="M9 5l7 7-7 7"/>'),
 };

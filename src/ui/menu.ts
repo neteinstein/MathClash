@@ -1,18 +1,20 @@
-import type { PlayerId } from '../board';
+import { ALL_PLAYERS, playerIds, type PlayerId } from '../board';
 import { Avatar, AVATAR_COUNT, AVATAR_NAMES } from '../avatar';
 import { COLORS, applyColorVars } from '../colors';
 import { DIFFICULTIES } from '../questions';
-import { DURATIONS, saveSettings, type Settings } from '../settings';
+import { DURATIONS, PLAYER_COUNTS, activePlayerCount, fixColors, saveSettings, type Settings } from '../settings';
 import { isSoundEnabled, setSoundEnabled, sfx, unlockAudio } from '../audio';
-import { h, isLandscape, pulse } from './dom';
+import { h, isLandscape, isLargeScreen, pulse } from './dom';
 import { ICONS } from './icons';
 import { canRequestFullscreen, enterFullscreen, isFullscreen, isIOS } from './fullscreen';
+import { SIDE, clearSeat, contentBox, frame, measureDepth, placeSeat } from './seats';
 
 export interface MenuCallbacks {
   onStart(): void;
 }
 
 interface SetupUi {
+  id: PlayerId;
   root: HTMLElement;
   avatar: Avatar;
   avatarName: HTMLElement;
@@ -24,9 +26,18 @@ interface SetupUi {
 
 const durationLabel = (d: number) => (d === 0 ? 'Sem limite' : `${d / 60} min`);
 
+/** `fixColors`, telling whether any colour had to change. */
+function fixColorsChanged(s: Settings, count: number): boolean {
+  const before = ALL_PLAYERS.map((p) => s.players[p].color).join();
+  fixColors(s, count);
+  return ALL_PLAYERS.map((p) => s.players[p].color).join() !== before;
+}
+
 export class MenuScreen {
   readonly el: HTMLDivElement;
   private readonly ui: Record<PlayerId, SetupUi>;
+  private readonly center: HTMLElement;
+  private readonly countBtn: HTMLButtonElement;
   private readonly durationBtn: HTMLButtonElement;
   private readonly soundBtn: HTMLButtonElement;
   private starting = false;
@@ -37,9 +48,24 @@ export class MenuScreen {
   ) {
     this.el = h('div', { class: `screen menu ${isLandscape() ? 'landscape' : 'portrait'}` });
     this.el.append(this.makeBackground());
-    const p1 = this.makeSetup(1);
-    const p2 = this.makeSetup(2);
-    this.ui = { 1: p1, 2: p2 };
+    const [p1, p2, p3, p4] = ALL_PLAYERS.map((id) => this.makeSetup(id));
+    this.ui = { 1: p1, 2: p2, 3: p3, 4: p4 };
+
+    // Tablets: 2, 3 or 4 players, one on each side of the screen.
+    this.countBtn = h('button', { class: 'chip', attrs: { 'aria-label': 'Número de jogadores' } });
+    this.countBtn.addEventListener('click', () => {
+      const i = PLAYER_COUNTS.indexOf(this.settings.playerCount);
+      this.settings.playerCount = PLAYER_COUNTS[(i + 1) % PLAYER_COUNTS.length];
+      fixColors(this.settings, this.settings.playerCount);
+      this.save();
+      // Everyone confirms again for the new line-up.
+      for (const u of Object.values(this.ui)) this.setReady(u, false);
+      this.refreshAll();
+      this.refreshOptions();
+      this.layout();
+      sfx.tap();
+      pulse(this.countBtn, 'pop', 300);
+    });
 
     this.durationBtn = h('button', { class: 'chip', attrs: { 'aria-label': 'Duração da partida' } });
     this.durationBtn.addEventListener('click', () => {
@@ -67,14 +93,20 @@ export class MenuScreen {
       s.style.setProperty('--i', String(i));
       logo.append(s);
     });
-    const center = h('div', { class: 'menu-center' },
+    this.center = h('div', { class: 'menu-center' },
       logo,
       h('div', { class: 'tagline', text: 'Acerta nas contas e pinta o tabuleiro!' }),
-      h('div', { class: 'menu-opts' }, this.durationBtn, this.soundBtn, helpBtn, this.makeFullscreenButton()),
+      h('div', { class: 'menu-opts' }, this.countBtn, this.durationBtn, this.soundBtn, helpBtn, this.makeFullscreenButton()),
     );
-    this.el.append(p2.root, center, p1.root);
+    this.el.append(p2.root, this.center, p1.root, p3.root, p4.root);
     this.refreshAll();
     this.refreshOptions();
+    this.layout();
+  }
+
+  /** Players taking part right now (always 2 on a phone). */
+  private active(): PlayerId[] {
+    return playerIds(activePlayerCount(this.settings));
   }
 
   private makeBackground(): HTMLElement {
@@ -117,8 +149,7 @@ export class MenuScreen {
       const b = h('button', { class: 'swatch', attrs: { 'aria-label': c.name } });
       b.style.setProperty('--sw', c.main);
       b.addEventListener('click', () => {
-        const otherId: PlayerId = id === 1 ? 2 : 1;
-        if (this.settings.players[otherId].color === i) {
+        if (this.active().some((q) => q !== id && this.settings.players[q].color === i)) {
           pulse(b, 'nope', 400);
           return;
         }
@@ -157,23 +188,29 @@ export class MenuScreen {
       h('div', { class: 'diffs' }, ...diffs),
       ready,
     );
-    return { root, avatar, avatarName, swatches, diffs, ready, isReady: false };
+    return { id, root, avatar, avatarName, swatches, diffs, ready, isReady: false };
+  }
+
+  private setReady(u: SetupUi, on: boolean): void {
+    u.isReady = on;
+    u.root.classList.toggle('is-ready', on);
+    u.ready.textContent = on ? 'À espera…' : 'PRONTO!';
   }
 
   private toggleReady(id: PlayerId): void {
     if (this.starting) return;
     unlockAudio();
     const u = this.ui[id];
-    u.isReady = !u.isReady;
-    u.root.classList.toggle('is-ready', u.isReady);
-    u.ready.textContent = u.isReady ? 'À espera…' : 'PRONTO!';
+    this.setReady(u, !u.isReady);
     if (u.isReady) {
       u.avatar.react('happy', 'jump');
       sfx.correct(0);
     } else sfx.tap();
-    if (this.ui[1].isReady && this.ui[2].isReady) {
+    const players = this.active();
+    if (players.every((p) => this.ui[p].isReady)) {
       this.starting = true;
-      for (const p of [1, 2] as PlayerId[]) {
+      fixColors(this.settings, players.length);
+      for (const p of players) {
         this.ui[p].ready.textContent = 'Vamos lá!';
         this.ui[p].avatar.react('happy', 'spin', 900);
       }
@@ -185,22 +222,22 @@ export class MenuScreen {
   private refresh(id: PlayerId): void {
     const setup = this.settings.players[id];
     const u = this.ui[id];
-    const otherColor = this.settings.players[id === 1 ? 2 : 1].color;
+    const taken = new Set(this.active().filter((q) => q !== id).map((q) => this.settings.players[q].color));
     applyColorVars(u.root, COLORS[setup.color]);
     u.avatarName.textContent = AVATAR_NAMES[setup.avatar];
     u.swatches.forEach((b, i) => {
       b.classList.toggle('selected', i === setup.color);
-      b.classList.toggle('taken', i === otherColor);
+      b.classList.toggle('taken', taken.has(i));
     });
     u.diffs.forEach((b, i) => b.classList.toggle('selected', i === setup.difficulty));
   }
 
   private refreshAll(): void {
-    this.refresh(1);
-    this.refresh(2);
+    for (const id of ALL_PLAYERS) this.refresh(id);
   }
 
   private refreshOptions(): void {
+    this.countBtn.innerHTML = `${ICONS.players}<span>${this.settings.playerCount} jogadores</span>`;
     this.durationBtn.innerHTML = `${ICONS.timer}<span>${durationLabel(this.settings.duration)}</span>`;
     this.soundBtn.innerHTML = isSoundEnabled() ? ICONS.soundOn : ICONS.soundOff;
   }
@@ -210,9 +247,42 @@ export class MenuScreen {
   }
 
   layout(): void {
+    const large = isLargeScreen();
+    const count = activePlayerCount(this.settings);
+    const multi = count > 2;
+    this.countBtn.hidden = !large;
     const o = isLandscape() ? 'landscape' : 'portrait';
-    this.el.classList.toggle('landscape', o === 'landscape');
-    this.el.classList.toggle('portrait', o === 'portrait');
+    this.el.classList.toggle('multi', multi);
+    this.el.classList.toggle('landscape', !multi && o === 'landscape');
+    this.el.classList.toggle('portrait', !multi && o === 'portrait');
+    for (const u of Object.values(this.ui)) {
+      const on = u.id <= count;
+      if (!on && u.isReady) this.setReady(u, false);
+      u.root.hidden = !on;
+      if (!multi) clearSeat(u.root);
+    }
+    // The colours on offer depend on who is playing (the screen may have just changed size).
+    if (fixColorsChanged(this.settings, count)) this.save();
+    this.refreshAll();
+    const c = this.center.style;
+    if (!multi) {
+      for (const p of ['left', 'top', 'width', 'height', '--cw']) c.removeProperty(p);
+      return;
+    }
+    // 3-4 players: each setup on its own side of the screen, facing its player; logo and options in the middle.
+    const box = contentBox(this.el);
+    this.el.style.setProperty('--vm', `${Math.min(box.w, box.h) / 100}px`);
+    const roots = new Map(this.active().map((id) => [SIDE[id], this.ui[id].root]));
+    const { strips, middle } = frame(box, (side, len) => {
+      const el = roots.get(side);
+      return el ? measureDepth(el, len) : 0;
+    });
+    for (const id of this.active()) placeSeat(this.ui[id].root, SIDE[id], strips[SIDE[id]]);
+    c.left = `${middle.x}px`;
+    c.top = `${middle.y}px`;
+    c.width = `${middle.w}px`;
+    c.height = `${middle.h}px`;
+    c.setProperty('--cw', `${middle.w}px`);
   }
 
   /** Android back button: closes the help if open. */
@@ -276,6 +346,7 @@ export class MenuScreen {
           h('li', { html: '<b>10 acertos seguidos</b> enviam um 😈 diabinho: o adversário recebe uma conta bem mais difícil. Quem a acertar ganha a dobrar!' }),
           h('li', { html: 'O nível escolhe as contas: 🐣 <b>+ −</b>, 🙂 <b>+ − ×</b>, 😎 <b>+ − × ÷</b>, 🔥 e 🧠 <b>tudo</b>. A cada 4 acertos os números ficam maiores.' }),
           h('li', { html: 'Ganha quem pintar o tabuleiro todo — ou quem tiver mais quando o tempo acabar.' }),
+          h('li', { html: 'Num <b>tablet</b> podem jogar <b>até 4</b> (botão 👥): um em cada lado do ecrã. Quem fica sem território sai e os outros continuam; o 😈 vai para o adversário com mais território.' }),
         ),
         h('p', { class: 'help-tip', text: 'Dica: escolham níveis diferentes para jogar miúdos contra graúdos!' }),
         close,

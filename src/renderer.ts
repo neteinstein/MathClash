@@ -17,7 +17,7 @@ export interface PaintEvent {
   y: number;
 }
 
-/** Space reserved at each end of the board for the avatars, in cells. */
+/** Space reserved at each end of the board (every side with 3-4 players) for the avatars, in cells. */
 export const AVATAR_MARGIN = 0.95;
 
 const NEUTRAL = 'rgba(255,255,255,0.075)';
@@ -39,7 +39,7 @@ export class BoardView {
   readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
   private board!: Board;
-  colors: Record<PlayerId, PlayerColor>;
+  colors: Partial<Record<PlayerId, PlayerColor>>;
   orientation: Orientation = 'portrait';
   onPaint: ((e: PaintEvent) => void) | null = null;
 
@@ -71,7 +71,7 @@ export class BoardView {
   private sparkles: { i: number; t0: number; dx: number; dy: number }[] = [];
   private nextSparkle = 0;
 
-  constructor(board: Board, colors: Record<PlayerId, PlayerColor>) {
+  constructor(board: Board, colors: Partial<Record<PlayerId, PlayerColor>>) {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'board-canvas';
     this.ctx = this.canvas.getContext('2d')!;
@@ -93,11 +93,16 @@ export class BoardView {
     this.animT = new Float32Array(n);
   }
 
-  /** Computes cell size for a given area; static so the game can pick a board size. */
-  static cellSizeFor(w: number, h: number, across: number, along: number, orientation: Orientation): number {
+  /**
+   * Computes cell size for a given area; static so the game can pick a board size.
+   * `allSides`: avatars sit on every side (3-4 players), so leave room all around.
+   */
+  static cellSizeFor(w: number, h: number, across: number, along: number, orientation: Orientation, allSides = false): number {
+    const m = AVATAR_MARGIN * 2;
+    const am = allSides ? m : 0;
     return orientation === 'portrait'
-      ? Math.min(w / across, h / (along + AVATAR_MARGIN * 2))
-      : Math.min(h / across, w / (along + AVATAR_MARGIN * 2));
+      ? Math.min(w / (across + am), h / (along + m))
+      : Math.min(h / (across + am), w / (along + m));
   }
 
   layout(cssW: number, cssH: number, orientation: Orientation): void {
@@ -111,7 +116,7 @@ export class BoardView {
     this.canvas.style.height = `${cssH}px`;
 
     const { w, h } = this.board;
-    const s = Math.floor(BoardView.cellSizeFor(cssW, cssH, w, h, orientation));
+    const s = Math.floor(BoardView.cellSizeFor(cssW, cssH, w, h, orientation, this.board.players.length > 2));
     this.cell = Math.max(4, s);
     this.cols = orientation === 'portrait' ? w : h;
     this.rows = orientation === 'portrait' ? h : w;
@@ -149,10 +154,14 @@ export class BoardView {
 
   /** Where the avatar of a player sits (canvas CSS px): on the outer edge of their home cell. */
   avatarAnchor(p: PlayerId): [number, number] {
-    const [cx, cy] = this.cellCenter(this.board.home[p]);
+    const i = this.board.home[p];
+    const [cx, cy] = this.cellCenter(i);
     const half = this.cell / 2;
-    if (this.orientation === 'portrait') return [cx, p === 1 ? cy + half : cy - half];
-    return [p === 1 ? cx - half : cx + half, cy];
+    const col = this.pos[i * 2];
+    const row = this.pos[i * 2 + 1];
+    if (row === this.rows - 1) return [cx, cy + half];
+    if (row === 0) return [cx, cy - half];
+    return [col === 0 ? cx - half : cx + half, cy];
   }
 
   /** Queues the paint animation for a list of changes. */
@@ -345,7 +354,7 @@ export class BoardView {
       ctx.fill();
       return;
     }
-    const c = this.colors[o as PlayerId];
+    const c = this.colors[o as PlayerId]!;
     ctx.fillStyle = c.main;
     roundRectPath(ctx, l, t, r - l, b - t, radii);
     ctx.fill();

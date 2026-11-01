@@ -6,9 +6,9 @@ import './styles.css';
 
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import type { PlayerId } from './board';
+import { ALL_PLAYERS, playerIds, type PlayerId } from './board';
 import { Fx } from './fx';
-import { loadSettings } from './settings';
+import { activePlayerCount, fixColors, loadSettings } from './settings';
 import { setSoundEnabled, unlockAudio } from './audio';
 import { GameScreen } from './ui/game';
 import { MenuScreen } from './ui/menu';
@@ -28,9 +28,10 @@ document.body.append(fx.canvas);
 const settings = loadSettings();
 setSoundEnabled(settings.sound);
 
-// Hidden testing/demo switch: ?bots=1,2 lets the computer play.
+// Hidden testing/demo switch: ?bots=1,2 lets the computer play (?bots=1,2,3,4: a 4-player match of bots).
 const params = new URLSearchParams(location.search);
-const bots = (params.get('bots') ?? '').split(',').map(Number).filter((n): n is PlayerId => n === 1 || n === 2);
+const bots = (params.get('bots') ?? '').split(',').map(Number).filter((n): n is PlayerId => ALL_PLAYERS.includes(n as PlayerId));
+const allBots = bots.length >= 2 && playerIds(bots.length).every((id) => bots.includes(id));
 
 let current: Screen | null = null;
 let wakeLock: { release(): Promise<void> } | null = null;
@@ -39,6 +40,7 @@ function show(next: Screen): void {
   current?.destroy();
   current = next;
   root.append(next.el);
+  next.layout();
 }
 
 function showMenu(): void {
@@ -48,7 +50,9 @@ function showMenu(): void {
 }
 
 function startGame(): void {
-  const game = new GameScreen(settings, fx, { onMenu: showMenu, onRematch: startGame }, { bots });
+  const players = allBots ? bots.length : activePlayerCount(settings);
+  fixColors(settings, players);
+  const game = new GameScreen(settings, fx, { onMenu: showMenu, onRematch: startGame }, { bots, players });
   show(game);
   game.start();
   void requestWakeLock();
@@ -123,5 +127,5 @@ if (Capacitor.isNativePlatform()) {
   });
 }
 
-if (bots.length === 2) startGame();
+if (allBots) startGame();
 else showMenu();

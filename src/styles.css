@@ -16,6 +16,11 @@
   box-sizing: border-box;
 }
 
+/* Elements styled with their own display (chips, setups…) must still hide. */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -614,7 +619,7 @@ button {
   right: 0;
   background: var(--ec);
   opacity: 0.85;
-  transition: width 0.3s;
+  transition: width 0.3s, right 0.3s;
 }
 
 .hud-time {
@@ -1505,6 +1510,188 @@ button {
 .btn:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* ======================================== 3-4 PLAYERS (tablets): one on each side
+   Seats are placed and rotated from JS (ui/seats.ts); sizes follow --vm, 1% of the
+   screen's shorter side, so the layout scales from small tablets to big ones. */
+
+.menu.multi .setup,
+.menu.multi .menu-center,
+.game.multi .panel,
+.game.multi .arena,
+.game.multi .dual-half {
+  position: absolute;
+  flex: none;
+}
+
+.menu.multi .setup {
+  gap: calc(var(--vm) * 0.9);
+  padding: calc(var(--vm) * 1.2) calc(var(--vm) * 1.5);
+}
+
+.menu.multi .setup-title {
+  font-size: calc(var(--vm) * 1.9);
+}
+
+.menu.multi .setup-avatar {
+  gap: calc(var(--vm) * 1.4);
+}
+
+.menu.multi .setup-avatar .avatar {
+  width: calc(var(--vm) * 9);
+  height: calc(var(--vm) * 9);
+}
+
+.menu.multi .arrow {
+  width: calc(var(--vm) * 4.6);
+  height: calc(var(--vm) * 4.6);
+  font-size: calc(var(--vm) * 2.4);
+}
+
+.menu.multi .avatar-name {
+  display: none;
+}
+
+.menu.multi .swatches {
+  gap: calc(var(--vm) * 1);
+}
+
+.menu.multi .swatch {
+  width: calc(var(--vm) * 4.2);
+  height: calc(var(--vm) * 4.2);
+}
+
+.menu.multi .diffs {
+  gap: calc(var(--vm) * 0.7);
+}
+
+.menu.multi .diff {
+  min-width: calc(var(--vm) * 8.4);
+  padding: calc(var(--vm) * 0.6);
+  border-radius: calc(var(--vm) * 1.5);
+  font-size: calc(var(--vm) * 1.6);
+}
+
+.menu.multi .diff-emoji {
+  font-size: calc(var(--vm) * 2.8);
+}
+
+.menu.multi .diff-ops {
+  font-size: calc(var(--vm) * 1.4);
+}
+
+.menu.multi .ready-btn {
+  padding: calc(var(--vm) * 1.1) calc(var(--vm) * 5.5);
+  font-size: calc(var(--vm) * 3.3);
+}
+
+.menu.multi .menu-center {
+  overflow: hidden;
+  padding: calc(var(--vm) * 1);
+}
+
+.menu.multi .logo {
+  /* Fits the middle, which can be narrow on a tablet standing upright. */
+  font-size: min(calc(var(--vm) * 6.4), calc(var(--cw, 9999px) / 5.8));
+}
+
+.menu.multi .tagline {
+  font-size: calc(var(--vm) * 1.9);
+}
+
+.game.multi .panel {
+  justify-content: center;
+  gap: calc(var(--vm) * 0.9);
+  padding: calc(var(--vm) * 0.9) calc(var(--vm) * 1.8) calc(var(--vm) * 1.5);
+}
+
+/* Long edges: keep the controls a comfortable size in the middle of the strip. */
+.game.multi .hud,
+.game.multi .qwrap,
+.game.multi .answers {
+  width: 100%;
+  max-width: calc(var(--vm) * 76);
+  margin-inline: auto;
+}
+
+.game.multi .qcard {
+  height: calc(var(--vm) * 7.6);
+  border-radius: calc(var(--vm) * 2.2);
+  font-size: calc(var(--vm) * 5);
+}
+
+.game.multi .qcard.long {
+  font-size: calc(var(--vm) * 3.9);
+}
+
+.game.multi .answers {
+  gap: calc(var(--vm) * 1.2);
+}
+
+.game.multi .ans {
+  height: calc(var(--vm) * 7.6);
+  border-radius: calc(var(--vm) * 2);
+  font-size: calc(var(--vm) * 4.4);
+}
+
+.game.multi .ans.long {
+  font-size: calc(var(--vm) * 3.3);
+}
+
+.game.multi .countdown {
+  font-size: calc(var(--vm) * 12);
+}
+
+.game.multi .dual-half {
+  align-items: flex-end;
+}
+
+/* Knocked out (3-4 players): the panel goes dark, the others play on. */
+.out-msg {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: rgba(10, 6, 30, 0.62);
+  text-align: center;
+}
+
+.out-msg b {
+  font-size: clamp(26px, calc(var(--vm, 8px) * 5), 48px);
+  font-weight: 700;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, 0.4);
+}
+
+.out-msg span {
+  font-size: clamp(13px, calc(var(--vm, 8px) * 2), 18px);
+  opacity: 0.85;
+}
+
+.panel.out .out-msg {
+  display: flex;
+  animation: fade-in 0.4s;
+}
+
+.panel.out .qwrap,
+.panel.out .answers {
+  filter: grayscale(0.8);
+}
+
+.avatar-wrap.out {
+  opacity: 0.55;
+  filter: grayscale(0.8) drop-shadow(0 4px 6px rgba(0, 0, 0, 0.35));
+}
+
+.dual-place {
+  margin-top: 2px;
+  font-size: clamp(17px, 2.6vh, 22px);
+  font-weight: 700;
+  color: #fde047;
 }
 
 @media (prefers-reduced-motion: reduce) {

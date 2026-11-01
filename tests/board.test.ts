@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Board } from '../src/board';
+import { Board, playerIds } from '../src/board';
 
 const seq = (vals: number[]) => {
   let i = 0;
@@ -62,5 +62,67 @@ describe('Board', () => {
     const orders = changes.map((c) => c.order);
     expect(Math.min(...orders)).toBe(1);
     expect([...orders].sort((a, c) => a - c)).toEqual(orders);
+  });
+});
+
+describe('Board with 3-4 players', () => {
+  it('puts one player on each side, each with a small blob around their avatar', () => {
+    const b = new Board(9, 13, [1, 2, 3, 4]);
+    expect(b.xy(b.home[1])).toEqual([4, 12]);
+    expect(b.xy(b.home[2])).toEqual([4, 0]);
+    expect(b.xy(b.home[3])).toEqual([0, 6]);
+    expect(b.xy(b.home[4])).toEqual([8, 6]);
+    for (const p of [1, 2, 3, 4] as const) {
+      expect(b.count(p)).toBe(4);
+      expect(b.cells[b.home[p]]).toBe(p);
+    }
+    expect(b.count(0)).toBe(9 * 13 - 16);
+  });
+
+  it('a three-player board has no player 4', () => {
+    const b = new Board(9, 13, [1, 2, 3]);
+    expect(b.home[4]).toBe(-1);
+    expect(b.count(4)).toBe(0);
+    expect(b.alive()).toEqual([1, 2, 3]);
+  });
+
+  it('side players grow towards the middle', () => {
+    const b = new Board(9, 13, [1, 2, 3, 4]);
+    const left = b.expand(3, 8, () => 0.5);
+    const right = b.expand(4, 8, () => 0.5);
+    const avgX = (cs: { idx: number }[]) => cs.reduce((s, c) => s + b.xy(c.idx)[0], 0) / cs.length;
+    expect(avgX(left)).toBeGreaterThan(1);
+    expect(avgX(right)).toBeLessThan(7);
+  });
+
+  it('can steal from any opponent, protecting each home until it is their last cell', () => {
+    const b = new Board(9, 9, [1, 2, 3, 4]);
+    b.cells.fill(1);
+    for (const p of [2, 3, 4] as const) b.cells[b.home[p]] = p;
+    const extra = b.home[3] + b.w; // a second cell for player 3, below its home
+    b.cells[extra] = 3;
+    // 2 and 4 are down to their home: those can be taken; 3's home is protected while it has two cells.
+    const changes = b.expand(1, 2, () => 0.5);
+    expect(changes.map((c) => c.from).sort()).toEqual([2, 4]);
+    expect(b.cells[b.home[3]]).toBe(3);
+    expect(b.alive()).toEqual([1, 3]);
+    // Knocking out one opponent does not stop the move while others are left.
+    const last = b.expand(1, 5, () => 0.5);
+    expect(last.map((c) => c.idx)).toEqual([extra, b.home[3]]);
+    expect(b.alive()).toEqual([1]);
+  });
+
+  it('flood paints everything from the winner outwards', () => {
+    const b = new Board(9, 11, [1, 2, 3, 4]);
+    b.flood(3);
+    expect(b.count(3)).toBe(9 * 11);
+  });
+
+  it('playerIds picks the first players, between 2 and 4', () => {
+    expect(playerIds(2)).toEqual([1, 2]);
+    expect(playerIds(3)).toEqual([1, 2, 3]);
+    expect(playerIds(4)).toEqual([1, 2, 3, 4]);
+    expect(playerIds(9)).toEqual([1, 2, 3, 4]);
+    expect(playerIds(0)).toEqual([1, 2]);
   });
 });
