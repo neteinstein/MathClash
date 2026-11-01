@@ -1,8 +1,15 @@
 /**
- * Territory board. Logical coordinates: `x` goes across (0..w-1) and `y` goes
- * along the main axis between players 1 and 2. Player 2 lives at y = 0,
- * player 1 at y = h - 1. With 3-4 players, player 3 lives at x = 0 and
- * player 4 at x = w - 1. The renderer decides how this maps to the screen.
+ * Territory board.
+ *
+ * Grid boards (2 and 4 players): square cells. Logical coordinates: `x` goes
+ * across (0..w-1) and `y` goes along the main axis between players 1 and 2.
+ * Player 2 lives at y = 0, player 1 at y = h - 1. With 4 players, player 3
+ * lives at x = 0 and player 4 at x = w - 1.
+ *
+ * Triangle boards (3 players): a big triangle cut into n² small ones, each
+ * player in the middle of one side (see `triCell`).
+ *
+ * The renderer decides how this maps to the screen.
  */
 
 import type { Rng } from './questions';
@@ -15,6 +22,148 @@ export const ALL_PLAYERS: readonly PlayerId[] = [1, 2, 3, 4];
 /** The first `n` players (2 to 4). */
 export const playerIds = (n: number): PlayerId[] => ALL_PLAYERS.slice(0, Math.max(2, Math.min(4, n)));
 
+export type BoardShape = 'grid' | 'triangle';
+
+/** Height of an equilateral triangle of side 1. */
+export const H3 = Math.sqrt(3) / 2;
+
+type Pt = [number, number];
+
+/**
+ * Small triangle `i` of a triangle board of side `n`, in canonical
+ * coordinates: the big triangle points up (apex at (n/2, 0), y grows
+ * downwards) and every small triangle has side 1. Row r (from the apex)
+ * holds 2r + 1 triangles, alternately pointing up and down; cell (r, k) is
+ * index r² + k.
+ */
+export function triCell(n: number, i: number): { pts: [Pt, Pt, Pt]; c: Pt; up: boolean } {
+  const r = Math.floor(Math.sqrt(i + 0.5));
+  const k = i - r * r;
+  const left = n / 2 - (r + 1) / 2; // left end of the row, at its bottom
+  const top = r * H3;
+  const bottom = (r + 1) * H3;
+  const j = k >> 1;
+  if (k % 2 === 0) {
+    return { pts: [[left + j, bottom], [left + j + 0.5, top], [left + j + 1, bottom]], c: [left + j + 0.5, bottom - H3 / 3], up: true };
+  }
+  return { pts: [[left + j + 0.5, top], [left + j + 1.5, top], [left + j + 1, bottom]], c: [left + j + 1, top + H3 / 3], up: false };
+}
+
+/**
+ * The side of the big triangle each player faces (canonical coordinates).
+ * The game draws it pointing right ▶, so the base ends up on the left
+ * (player 3), the left side at the top (player 2) and the right side at the
+ * bottom (player 1): each side faces the player sitting there.
+ */
+export function triEdge(n: number, p: PlayerId): { mid: Pt; inward: Pt } {
+  switch (p) {
+    case 3:
+      return { mid: [n / 2, n * H3], inward: [0, -1] };
+    case 2:
+      return { mid: [n / 4, (n * H3) / 2], inward: [H3, 0.5] };
+    default:
+      return { mid: [(3 * n) / 4, (n * H3) / 2], inward: [-H3, 0.5] };
+  }
+}
+
+interface Topology {
+  nbrs: number[][];
+  home: Partial<Record<PlayerId, number>>;
+  start: Partial<Record<PlayerId, number[]>>;
+  /** How far "forward" a cell is for a player, 0 at their home edge, 1 at the far end. */
+  forward(p: PlayerId, i: number): number;
+}
+
+function gridTopology(w: number, h: number, players: readonly PlayerId[]): Topology {
+  const idx = (x: number, y: number) => y * w + x;
+  const mx = Math.floor(w / 2);
+  const my = Math.floor(h / 2);
+  // Home cell and the cell just in front of it, for each side.
+  const spots: Record<PlayerId, { home: Pt; front: Pt; along: Pt }> = {
+    1: { home: [mx, h - 1], front: [mx, h - 2], along: [1, 0] },
+    2: { home: [mx, 0], front: [mx, 1], along: [1, 0] },
+    3: { home: [0, my], front: [1, my], along: [0, 1] },
+    4: { home: [w - 1, my], front: [w - 2, my], along: [0, 1] },
+  };
+  const nbrs: number[][] = [];
+  for (let i = 0; i < w * h; i++) {
+    const x = i % w;
+    const y = Math.floor(i / w);
+    const n: number[] = [];
+    if (y > 0) n.push(i - w);
+    if (y < h - 1) n.push(i + w);
+    if (x > 0) n.push(i - 1);
+    if (x < w - 1) n.push(i + 1);
+    nbrs.push(n);
+  }
+  const home: Topology['home'] = {};
+  const start: Topology['start'] = {};
+  for (const p of players) {
+    // Each player starts with a small blob around their avatar.
+    const { home: [hx, hy], front, along: [ax, ay] } = spots[p];
+    home[p] = idx(hx, hy);
+    start[p] = [[hx, hy], [hx - ax, hy - ay], [hx + ax, hy + ay], front]
+      .filter(([x, y]) => x >= 0 && x < w && y >= 0 && y < h)
+      .map(([x, y]) => idx(x, y));
+  }
+  const forward = (p: PlayerId, i: number): number => {
+    const x = i % w;
+    const y = Math.floor(i / w);
+    switch (p) {
+      case 1:
+        return (h - 1 - y) / (h - 1);
+      case 2:
+        return y / (h - 1);
+      case 3:
+        return x / (w - 1);
+      case 4:
+        return (w - 1 - x) / (w - 1);
+    }
+  };
+  return { nbrs, home, start, forward };
+}
+
+function triangleTopology(n: number, players: readonly PlayerId[]): Topology {
+  const size = n * n;
+  const nbrs: number[][] = [];
+  for (let r = 0; r < n; r++) {
+    for (let k = 0; k <= 2 * r; k++) {
+      const i = r * r + k;
+      const nb: number[] = [];
+      if (k % 2 === 0) {
+        // Pointing up: neighbours left and right in the row, and the one below.
+        if (k > 0) nb.push(i - 1);
+        if (k < 2 * r) nb.push(i + 1);
+        if (r < n - 1) nb.push((r + 1) * (r + 1) + k + 1);
+      } else {
+        // Pointing down: left, right and the one above.
+        nb.push(i - 1, i + 1, (r - 1) * (r - 1) + k - 1);
+      }
+      nbrs.push(nb);
+    }
+  }
+  const centres = Array.from({ length: size }, (_, i) => triCell(n, i).c);
+  const dist = (a: Pt, b: Pt) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const home: Topology['home'] = {};
+  const start: Topology['start'] = {};
+  const fwd: Partial<Record<PlayerId, Float64Array>> = {};
+  for (const p of players) {
+    const { mid, inward } = triEdge(n, p);
+    let best = 0;
+    for (let i = 1; i < size; i++) if (dist(centres[i], mid) < dist(centres[best], mid)) best = i;
+    home[p] = best;
+    // A short strip of 5 triangles along their side, centred on the avatar.
+    start[p] = centres.flatMap((c, i) => (dist(c, mid) < 1.1 ? [i] : []));
+    const f = new Float64Array(size);
+    for (let i = 0; i < size; i++) {
+      const c = centres[i];
+      f[i] = ((c[0] - mid[0]) * inward[0] + (c[1] - mid[1]) * inward[1]) / (n * H3);
+    }
+    fwd[p] = f;
+  }
+  return { nbrs, home, start, forward: (p, i) => fwd[p]![i] };
+}
+
 export interface CellChange {
   idx: number;
   from: Owner;
@@ -26,6 +175,8 @@ export interface CellChange {
 }
 
 export class Board {
+  readonly shape: BoardShape;
+  /** Grid: columns and rows. Triangle: both are the side n (in small triangles). */
   readonly w: number;
   readonly h: number;
   readonly cells: Uint8Array;
@@ -34,41 +185,28 @@ export class Board {
   /** Home cell (where the avatar sits) for each player, indexed by id (-1 when not playing). */
   readonly home: [number, number, number, number, number];
   private readonly nbrs: number[][];
+  private readonly forward: (p: PlayerId, i: number) => number;
 
-  constructor(w: number, h: number, players: readonly PlayerId[] = [1, 2]) {
+  constructor(w: number, h: number, players: readonly PlayerId[] = [1, 2], shape: BoardShape = 'grid') {
+    this.shape = shape;
     this.w = w;
     this.h = h;
     this.players = players;
     this.cells = new Uint8Array(w * h);
-    const mx = Math.floor(w / 2);
-    const my = Math.floor(h / 2);
-    // Home cell and the cell just in front of it, for each side.
-    const spots: Record<PlayerId, { home: [number, number]; front: [number, number]; along: [number, number] }> = {
-      1: { home: [mx, h - 1], front: [mx, h - 2], along: [1, 0] },
-      2: { home: [mx, 0], front: [mx, 1], along: [1, 0] },
-      3: { home: [0, my], front: [1, my], along: [0, 1] },
-      4: { home: [w - 1, my], front: [w - 2, my], along: [0, 1] },
-    };
+    const t = shape === 'triangle' ? triangleTopology(w, players) : gridTopology(w, h, players);
+    this.nbrs = t.nbrs;
+    this.forward = t.forward;
     this.home = [-1, -1, -1, -1, -1];
-    for (const p of players) this.home[p] = this.idx(...spots[p].home);
-    this.nbrs = [];
-    for (let i = 0; i < w * h; i++) {
-      const x = i % w;
-      const y = Math.floor(i / w);
-      const n: number[] = [];
-      if (y > 0) n.push(i - w);
-      if (y < h - 1) n.push(i + w);
-      if (x > 0) n.push(i - 1);
-      if (x < w - 1) n.push(i + 1);
-      this.nbrs.push(n);
-    }
-    // Each player starts with a small blob around their avatar.
     for (const p of players) {
-      const { home: [hx, hy], front, along: [ax, ay] } = spots[p];
-      for (const [x, y] of [[hx, hy], [hx - ax, hy - ay], [hx + ax, hy + ay], front]) {
-        if (x >= 0 && x < w && y >= 0 && y < h) this.cells[this.idx(x, y)] = p;
-      }
+      this.home[p] = t.home[p]!;
+      for (const i of t.start[p]!) this.cells[i] = p;
     }
+  }
+
+  /** Three players around a triangle of side `n` (odd, so every avatar sits mid-side). */
+  static triangle(n: number, players: readonly PlayerId[] = [1, 2, 3]): Board {
+    if (players.some((p) => p > 3)) throw new Error('A triangle board has room for 3 players');
+    return new Board(n, n, players, 'triangle');
   }
 
   idx(x: number, y: number): number {
@@ -96,22 +234,6 @@ export class Board {
   /** Players that still own at least one cell. */
   alive(): PlayerId[] {
     return this.players.filter((p) => this.count(p) > 0);
-  }
-
-  /** How far "forward" a cell is for a player, 0 at their home edge, 1 at the opposite edge. */
-  private forward(p: PlayerId, i: number): number {
-    const x = i % this.w;
-    const y = Math.floor(i / this.w);
-    switch (p) {
-      case 1:
-        return (this.h - 1 - y) / (this.h - 1);
-      case 2:
-        return y / (this.h - 1);
-      case 3:
-        return x / (this.w - 1);
-      case 4:
-        return (this.w - 1 - x) / (this.w - 1);
-    }
   }
 
   /**

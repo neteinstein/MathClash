@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { frame, overlayFrame, type Rect, type Side } from '../src/ui/seats';
+import { frame, overlayFrame, sideOf, type Rect, type Side } from '../src/ui/seats';
 
 const SIDES: Side[] = ['bottom', 'top', 'left', 'right'];
 
@@ -63,5 +63,14 @@ describe('seat layout (3-4 players around a tablet)', () => {
         expect(vertical ? r.w : r.h).toBeGreaterThanOrEqual(300); // depth towards the middle
       }
     }
+  });
+});
+
+describe('who sits where', () => {
+  it('one player per side; with three on a tablet lying sideways, player 2 moves to the right', () => {
+    expect([1, 2, 3, 4].map((id) => sideOf(id as 1, 4, false))).toEqual(['bottom', 'top', 'left', 'right']);
+    expect([1, 2, 3, 4].map((id) => sideOf(id as 1, 4, true))).toEqual(['bottom', 'top', 'left', 'right']);
+    expect([1, 2, 3].map((id) => sideOf(id as 1, 3, false))).toEqual(['bottom', 'top', 'left']);
+    expect([1, 2, 3].map((id) => sideOf(id as 1, 3, true))).toEqual(['bottom', 'right', 'left']);
   });
 });

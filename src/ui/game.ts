@@ -9,7 +9,7 @@ import { sfx, vibrate } from '../audio';
 import type { Settings } from '../settings';
 import { h, hasKeyboard, isLandscape, onPress, pulse } from './dom';
 import { ICONS } from './icons';
-import { ANGLE, SIDE, contentBox, frame, inward, measureDepth, overlayFrame, placeSeat } from './seats';
+import { ANGLE, contentBox, frame, measureDepth, overlayFrame, placeSeat, sideOf, type Side } from './seats';
 
 type State = 'countdown' | 'playing' | 'paused' | 'ending' | 'over';
 
@@ -88,6 +88,8 @@ export class GameScreen {
   private elapsed = 0;
   private lastSecond = -1;
   private orientation: Orientation;
+  /** 3 players on a tablet lying sideways: player 2 on the right and the triangle pointing up. */
+  private turned = false;
   private readonly timers = new Set<number>();
   private finale = false;
   /** Knocked-out players, first one out first. */
@@ -126,8 +128,20 @@ export class GameScreen {
 
   /** Rotation that makes things face a player (degrees, clockwise). */
   private angleOf(id: PlayerId): number {
-    if (this.multi) return ANGLE[SIDE[id]];
+    // Around the screen they face their own side of the board (on a triangle, a slanted one).
+    if (this.multi) return this.view ? this.view.homeAngle(id) : ANGLE[this.seat(id)];
     return this.orientation === 'portrait' && id === 2 ? 180 : 0;
+  }
+
+  /** Which side of the screen a player sits on (3-4 players). */
+  private seat(id: PlayerId): Side {
+    return sideOf(id, this.players.length, this.turned);
+  }
+
+  /** How the board is turned on screen; the triangle (3 players) points up when the tablet lies sideways. */
+  private boardTurn(): Orientation {
+    if (!this.multi) return this.orientation;
+    return this.turned ? 'landscape' : 'portrait';
   }
 
   private makePlayer(id: PlayerId, ids: PlayerId[]): PlayerRt {
@@ -180,11 +194,6 @@ export class GameScreen {
     const avatar = new Avatar(setup.avatar);
     const avatarWrap = h('div', { class: `avatar-wrap p${id}` }, avatar.el);
     applyColorVars(avatarWrap, color);
-    if (this.multi) {
-      // Avatar and messages face the player sitting on that side.
-      avatarWrap.style.setProperty('rotate', `${this.angleOf(id)}deg`);
-      floats.style.setProperty('rotate', `${this.angleOf(id)}deg`);
-    }
 
     return {
       id, color, difficulty: setup.difficulty, avatar, avatarWrap, panel, qcard, qtext,
@@ -198,8 +207,14 @@ export class GameScreen {
   start(): void {
     if (this.multi) this.layoutSeats();
     const r = this.arena.getBoundingClientRect();
-    const [w, hCells] = this.multi ? GameScreen.multiBoardSize(r.width, r.height) : this.boardSize(r.width, r.height);
-    this.board = new Board(w, hCells, this.players.map((p) => p.id));
+    const ids = this.players.map((p) => p.id);
+    if (ids.length === 3) {
+      // Three players: a triangle, one side facing each of them.
+      this.board = Board.triangle(BoardView.triangleSizeFor(r.width, r.height, this.boardTurn()), ids);
+    } else {
+      const [w, hCells] = this.multi ? GameScreen.multiBoardSize(r.width, r.height) : this.boardSize(r.width, r.height);
+      this.board = new Board(w, hCells, ids);
+    }
     const colors: Partial<Record<PlayerId, PlayerColor>> = {};
     for (const p of this.players) colors[p.id] = p.color;
     this.view = new BoardView(this.board, colors);
@@ -221,7 +236,7 @@ export class GameScreen {
     return [w, Math.max(8, Math.min(16, Math.round(along / s0 - AVATAR_MARGIN * 2)))];
   }
 
-  /** 3-4 players: odd sizes so the avatars on every side sit in the middle of their edge. */
+  /** 4 players: odd sizes so the avatars on every side sit in the middle of their edge. */
   static multiBoardSize(width: number, height: number): [number, number] {
     const short = Math.min(width, height);
     const long = Math.max(width, height);
@@ -245,7 +260,7 @@ export class GameScreen {
     if (!this.view) return;
     const o = this.orientation;
     const r = this.arena.getBoundingClientRect();
-    this.view.layout(r.width, r.height, o);
+    this.view.layout(r.width, r.height, this.boardTurn());
     const size = this.view.cell * 1.7;
     const unit = Math.max(15, Math.min(30, this.view.cell * 0.56));
     for (const p of this.players) {
@@ -259,9 +274,13 @@ export class GameScreen {
       let fx = x;
       let fy = y;
       if (this.multi) {
-        const [ux, uy] = inward(SIDE[p.id]);
-        fx += ux * reach;
-        fy += uy * reach;
+        // Avatar and messages face the player, growing towards the middle of the board.
+        const deg = this.angleOf(p.id);
+        const a = (deg * Math.PI) / 180;
+        fx += Math.sin(a) * reach;
+        fy -= Math.cos(a) * reach;
+        p.avatarWrap.style.setProperty('rotate', `${deg}deg`);
+        p.floats.style.setProperty('rotate', `${deg}deg`);
       } else if (o === 'portrait') fy = p.id === 1 ? y - reach : y + reach;
       else fx = p.id === 1 ? x + reach : x - reach;
       const z = p.floats;
@@ -277,13 +296,14 @@ export class GameScreen {
   /** 3-4 players: a panel on each side of the screen, facing its player, and the board in the middle. */
   private layoutSeats(): void {
     const box = contentBox(this.el);
+    this.turned = this.players.length === 3 && box.w > box.h;
     this.el.style.setProperty('--vm', `${Math.min(box.w, box.h) / 100}px`);
-    const panels = new Map(this.players.map((p) => [SIDE[p.id], p.panel]));
+    const panels = new Map(this.players.map((p) => [this.seat(p.id), p.panel]));
     const { strips, middle } = frame(box, (side, len) => {
       const el = panels.get(side);
       return el ? measureDepth(el, len) : 0;
     });
-    for (const p of this.players) placeSeat(p.panel, SIDE[p.id], strips[SIDE[p.id]]);
+    for (const p of this.players) placeSeat(p.panel, this.seat(p.id), strips[this.seat(p.id)]);
     const s = this.arena.style;
     s.left = `${middle.x}px`;
     s.top = `${middle.y}px`;
@@ -830,7 +850,7 @@ export class GameScreen {
     if (!halves.length) return;
     const strips = overlayFrame(contentBox(this.el));
     for (const el of halves) {
-      const side = SIDE[Number(el.dataset.id) as PlayerId];
+      const side = this.seat(Number(el.dataset.id) as PlayerId);
       placeSeat(el, side, strips[side]);
     }
   }
